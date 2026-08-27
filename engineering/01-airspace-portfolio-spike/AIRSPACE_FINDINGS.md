@@ -142,7 +142,7 @@ volunteering to consult a coordinator. Full comparison in
 
 ## 9. Live proof
 
-Full log: `evidence/airspace/live-run.json`.
+Full log: `evidence/live-run.json`.
 
 ```
 factory     0xdcf7b2401ee319e40205845c4908992621c52ce6
@@ -171,7 +171,7 @@ escalation, rewriting another agent's policy, widening the bucket ceiling,
 admitting a market into another bucket, releasing another agent's live
 reservation, and replay. All refused.
 
-**18/18 fork tests** at a pinned block (`evidence/airspace/fork-tests.txt`).
+**18/18 fork tests** at a pinned block (`evidence/fork-tests.txt`).
 
 Both A and B were **unfilled resting orders**, so the rejection of C is proof
 that reservations occupy the envelope before they fill -- the property that stops

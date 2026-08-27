@@ -1,142 +1,115 @@
 # evidence/
 
-All artifacts from the FLIGHTPATH spike. Chain: Somnia Shannon, chainId **50312**.
-Explorer: https://shannon-explorer.somnia.network
+Index of the public engineering evidence, and the rule for what may live here.
 
-## Files
+The raw artifacts sit beside the stage that produced them, under
+`engineering/*/evidence/`. This file explains what is safe to publish, what is
+never published, and which artifact backs which claim.
 
-- `live-run.json` — full structured log of the live end-to-end run
-- `fork-tests.txt` — 21/21 forge fork tests against pinned live state
+Production evidence (deployment receipts, audit reports) will land in this
+directory once the production build begins. It is otherwise empty by design.
 
-## Actors
+---
 
-```
-OWNER   0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc
-AGENT   0x60536020d9926512dd8F806466431c1e504B29aB
-```
+## What is public, and safe
 
-Two independent keys. The agent key was funded with STT for gas only and held no
-collateral and no outcome tokens at any point in the run.
+All of this is already world-readable on a public testnet. Publishing it reveals
+nothing that a block explorer does not.
 
-## Deployed
+| Category | Example |
+|---|---|
+| Contract addresses | `BinaryMarketsModule 0x3ecC694Cef705358864a646142ac17A90E29e388` |
+| Deployed prototype addresses | `Portfolio 0x2F9BE34ae56C7be945211e011CC189ECC5941Ab8` |
+| Transaction hashes | `0xc5541d26fe40a0aca94bbc9c0a087abd57e8feda108134cc2925d3bfd98532d2` |
+| Reverted transaction hashes | `0x6fe4204c783e42e0ae67f776b7c6d7a04badf06f9cc879347f03f4d8b62e6480` |
+| Market ids, pool addresses, generations | `0xb278`, pool `0xC3E2b06a…`, nonce 91 |
+| Block numbers and pinned fork blocks | `472749135` |
+| **Public wallet addresses** | `OWNER 0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc` |
+| Domain keys, policy hashes, intent hashes | `0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900` |
+| Test results and gas benchmarks | `29 passed; 0 failed` |
+| Sanitized execution receipts | `engineering/*/evidence/live-run.json` |
 
-```
-FlightFactory        0x96F5f7aCED65149440dC8807C2CD2f66514fc2a2
-Execution account    0x083663A3849b795F423F6d8E9129394A479484Bd
-```
+## What is never included
 
-## Protocol under test (unmodified, live)
+- private keys
+- mnemonics / seed phrases
+- keystore files or passwords
+- secret environment values
+- API keys, service-role keys, bearer tokens
 
-```
-BinaryMarketsModule  0x3ecC694Cef705358864a646142ac17A90E29e388
-OutcomeToken6909     0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9
-tUSDC (collateral)   0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E   (6 decimals)
-MarketCreator        0x94D963B6670AB96E78C8d0C46ca35D196d606EFE
-```
+The wallets used in the spikes are **throwaway testnet keys** generated for this
+work. Their addresses are published; their private keys live only in a gitignored
+`.wallets.json` and were never committed — this repository's history begins at the
+product-lock checkpoint and has never contained them.
 
-## Market traded
-
-```
-marketId     0x000000000000000000000000000000000000000000000000000000000000b00d
-asset        BTC          intervalSec 14400
-pool         0x3693799C1F707162acf8777a718B7E20f54a750D
-marketNonce  93
-```
-
-## Transactions
-
-| Step | Tx | Result |
-|---|---|---|
-| Fund agent with STT | `0x7cb6fe5edfdcc6806295f0d4df1661ade12b3c467a10ad9dfde00f08e607284c` | success |
-| Deploy factory | `0x13e0f9368469e24152167bab4e834080e9f874b1ce7ab582a43db08c53dfc1be` | success |
-| Fund account (faucet via `ownerCall`) | `0x9bcef5a5533a5c3b59581e32f21f54f799e4403e774c8df93605ecb5a1b30e6b` | success, 2,000 tUSDC |
-| **AGENT trade (real fill)** | **`0xf0198627202a78bd12448fee967be80898e9c34151a46ee3ce9589e72ebc0536`** | **success** |
-| Negative: over order notional | `0x8d360c2db6aa15a380871f223e2a2050eae2ceddeb1e484122e0c4d823187904` | **reverted (expected)** |
-| Negative: agent withdraw | `0x8c1f3d5c47f0df080c6039a0109738bce4e81ab6f2e76f4c85fdc66775203b65` | **reverted (expected)** |
-| Revoke agent → `address(0)` | `0x030ac5e93011bc54b9c2b454e5ff54b69ba90c8ef7aef08422af35ebe8608d97` | success |
-| Owner withdraw collateral | `0x8ee6d770d5086fa5dd1e0df6508155a2b379d934b89c7102c45b759ca42b9368` | success, 1,808 tUSDC |
-| Owner withdraw outcome tokens | `0x46d343161a9d594b1091eabef1927a0af6acc28b3e97ce280f56be240f65ca50` | success, 200,000,000 YES |
-
-An earlier identical run produced trade
-`0x0f150711f72a939f89e8b7621cbffb284df5406674ace73e6108e6da06a54693` on market
-`0x…b00d`; `live-run.json` records the second, canonical run.
-
-## Expected state
-
-**After the trade:**
-
-```
-account  YES(0x…b00d)  = 200,000,000
-account  tUSDC          = 1,808,000,000   (2,000,000,000 - 192,000,000)
-agent    YES            = 0
-agent    tUSDC          = 0
-owner EOA YES           = 0
-```
-
-Collateral spent 192,000,000 for 200,000,000 contracts — an average fill of 960,000
-against a requested ceiling of 985,000, because a taker is charged the resting price.
-This is why the receipt does not assert `actualFill` (see `AUTHORITY_MODEL.md` §4).
-
-**After owner recovery, with the agent revoked:**
-
-```
-account  tUSDC = 0        account YES = 0
-owner    YES   = 200,000,000
-```
-
-## Live negative proofs
-
-Executed as `eth_call` against live state at the live block — real bytecode, real
-storage. Each was required to revert with a specific named error; a success would
-have failed the run.
-
-```
-IntentReplayed        replay of the same intent nonce
-MarketNotBound        a different, real marketId
-GenerationMismatch    stale recycled-pool generation
-PoolMismatch          substituted pool address
-PriceOutsidePolicy    price above the policy ceiling
-OffTickGrid           price off the venue tick grid
-NotOwner              agent withdraw collateral
-NotOwner              agent withdraw outcome tokens
-NotOwner              agent ownerCall
-NotOwner              agent setAgent
-```
-
-## Reproducing
+Verified mechanically by
+[`engineering/02-product-lock/research/onchain-probes/secret-scan.mjs`](../engineering/02-product-lock/research/onchain-probes/secret-scan.mjs),
+which cross-checks every file against the actual key material and classifies every
+`0x`+64-hex string. Latest run: **0 leaks, 0 mnemonics, 0 API tokens**; all 96
+key-shaped strings classified as public tx hashes / market ids / policy hashes.
 
 ```bash
-# fork proofs (pinned block)
-export SHANNON_RPC=https://dream-rpc.somnia.network
-export FORK_BLOCK=472700908
-export MARKET_ID=0x00000000000000000000000000000000000000000000000000000000000000a8ce
-forge test --match-path test/FlightAccount.fork.t.sol -vv
-
-# live run (needs funded OWNER/AGENT keys in .wallets.json, gitignored)
-node script/live.mjs
+node engineering/02-product-lock/research/onchain-probes/secret-scan.mjs .
 ```
 
-The fork block is pinned because Shannon's 60-second windows mean market `0x…a8ce`
-stops being live within hours. `script/live.mjs` selects a live market dynamically
-and will pick whatever is trading at run time.
+---
 
-## Protocol probes worth keeping
+## Claim → evidence map
 
-```
-placeBinaryOrderFor from EOA (third-party) -> 0x3fb0ba2e  OnlyApprovedContracts()
-placeBinaryOrderFor from EOA (self-for)    -> 0x3fb0ba2e  OnlyApprovedContracts()
-placeBinaryOrder    from EOA               -> 0xfb8f41b2  ERC20InsufficientAllowance
-placeBinaryOrder    from contract          -> 0xfb8f41b2  ERC20InsufficientAllowance  (state-override)
+### Stage 00 — FLIGHTPATH (verdict REVISE)
+`engineering/00-flightpath-feasibility/evidence/`
 
-isOperatorAuthorized(address,address,bytes4)  0xa8cb3794  ABSENT from binaryPoolImpl
-setManualVaultMode(bool)                      0xfc7b1853  ABSENT from binaryPoolImpl
-```
+| Claim | Evidence |
+|---|---|
+| No session-key path exists for Event Contracts | `README.md` protocol probes — `placeBinaryOrderFor` → `OnlyApprovedContracts()` from every EOA caller, including self |
+| A contract can trade; the account holds the position | `live-run.json` step `04-agent-trade` — 192 tUSDC spent, 200,000,000 YES to the account, agent balance 0 |
+| The agent cannot move capital | 10 live negative proofs + 2 broadcast reverted transactions |
+| Owner recovery is unconditional | `live-run.json` step `07-owner-recovery`, agent revoked to `address(0)` |
+| 21 fork proofs | `fork-tests.txt` (pinned block 472700908) |
 
-Competitor verification (deployed bytecode, not README):
+### Stage 01 — AIRSPACE portfolio spike (verdict REVISE)
+`engineering/01-airspace-portfolio-spike/evidence/`
 
-```
-Vane factory 0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43  — 27,737 bytes, live
-  contains 0x718c2d4d placeBinaryOrder
-  contains 0x53edf33d onEvent(address,bytes32[],bytes)     (Reactivity handler)
-  contains BinaryMarketsModule + tUSDC addresses
-```
+| Claim | Evidence |
+|---|---|
+| Cross-agent rejection works live | `live-run.json` step `06-agentC-rejected` — 180 + 240 + 150 > 500, `agentCommitted[C]` unchanged |
+| Reservations occupy the envelope before filling | steps `04`/`05` — both orders unfilled POST_ONLY at the time C was refused |
+| Release then re-admit through a real lifecycle | steps `08`/`09` |
+| `marketId → asset` has no on-chain view | `RISK_IDENTITY.md` — 304 selector probes across two MarketCreators and the module implementation |
+| 18 fork proofs | `fork-tests.txt` (pinned block 472724061) |
+
+### Stage 02 — Product lock (verdict LOCK, 11/11)
+`engineering/02-product-lock/evidence/`
+
+| Claim | Evidence |
+|---|---|
+| Domains derive on-chain with no attestation | `live-run.json` step `02-structural-domain` — `domainOf(m1) == domainOf(m2) == domainKey(creator, collateral, 14400)` |
+| No per-market admission | step `05-agentB` — `ownerTxSinceConfig: 0` across two different markets |
+| Individually valid order rejected only by other agents' state | step `06-agentC-rejected` — `DomainRiskExceeded`, C's committed and the domain state both unchanged |
+| Sibling switch does not escape the ceiling | step `07-hostile-C`, first entry |
+| 11 hostile refusals by a malicious agent | step `07-hostile-C` |
+| Concurrency: atomic state picks the winner | step `08-concurrency-race` — B broadcast before A's outcome was known, reverted on-chain |
+| Owner recovery with all agents revoked | step `11-owner-recovery` — 5,965.44 tUSDC recovered, residual 0 |
+| External fill cannot understate risk | `fork-tests.txt` — `test_R7_externalFillCannotUnderstateRisk` (20 → 40 → 20) |
+| Rolling generations stay bounded | `scale-bench.txt` — 500 generations, peak collection size 1 |
+| 100 portfolios / 1,000 agents / 10,000 intents | `scale-bench.txt` |
+| Shared vs isolated capital efficiency | `sponsor-sim.txt` — **modelled**, schedule stated in the test source |
+| 29 fork proofs | `fork-tests.txt` (pinned block 472749135) |
+
+---
+
+## Caveats that travel with the evidence
+
+- **Fork blocks are pinned per stage.** Shannon's 60-second cadence retires markets
+  within hours, so a stage's suite only reproduces at its own pinned block with its
+  own market ids.
+- **`sponsor-sim.txt` is modelled, not measured.** The demand schedule is an
+  assumption stated in `AirspaceSponsorImpact.t.sol`; the admitted/rejected counts
+  are contract output.
+- **`scale-bench.txt` uses mocked DreamDEX counterparties** so that 10,000 intents
+  measure contract cost rather than RPC latency. Correctness is proven on the real
+  fork.
+- **Testnet activity is substantially synthetic.** Behavioural conclusions describe
+  a demo environment, not production trader behaviour.
+- These are **prototype** deployments from a validation spike: unaudited, with no
+  upgrade path, and not intended for real funds.

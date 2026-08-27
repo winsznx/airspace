@@ -3,7 +3,7 @@
 The live multi-agent demonstration on Somnia Shannon (chainId 50312), against the
 unmodified deployed DreamDEX Event Contracts.
 
-Full structured log: `evidence/airspace-lock/live-run.json`
+Full structured log: `evidence/live-run.json`
 Explorer: https://shannon-explorer.somnia.network
 
 ---
@@ -188,7 +188,7 @@ placement through a far simpler contract.
 
 ## 8. Fork suite
 
-`evidence/airspace-lock/fork-tests.txt` — **29/29** at pinned block 472749135
+`evidence/fork-tests.txt` — **29/29** at pinned block 472749135
 against markets `0xb278` / `0xb277`.
 
 Includes the adversarial reconciliation test `test_R7_externalFillCannotUnderstateRisk`,

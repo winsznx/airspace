@@ -2,7 +2,7 @@
 
 Who may move what, across many agents sharing one capital base.
 
-Supersedes `AUTHORITY_MODEL.md` (single-agent FLIGHTPATH), which stays in the
+Supersedes `../00-flightpath-feasibility/AUTHORITY_MODEL.md` (single-agent FLIGHTPATH), which stays in the
 repo for auditability.
 
 ---

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {
     IBinaryMarketsModule, IBinaryPool, IBinaryMarket, IOutcomeToken6909, IERC20Min
-} from "../interfaces/IDreamDex.sol";
+} from "../../shared/interfaces/IDreamDex.sol";
 import {IOrderBookView, GlobalPolicy, DomainPolicy, AgentPolicy, Intent} from "./IAirspaceV2.sol";
 
 /// @title AirspacePortfolio

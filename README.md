@@ -1,16 +1,20 @@
-# Somnia × DreamDEX — AIRSPACE
+# AIRSPACE
 
 **One capital pool. Many trading agents. One shared risk envelope.**
 
 Several independently controlled DreamDEX Event Contract agents share one capital
-base. Every proposed order must pass both its local agent policy and atomic
-portfolio-wide admission. An individually legal order is rejected when reservations
-or positions created by *other* agents have already consumed portfolio risk capacity.
+base on Somnia. Every proposed order must pass both its local agent policy and
+atomic portfolio-wide admission. An individually legal order is rejected when
+reservations or positions created by *other* agents have already consumed portfolio
+risk capacity.
 
 Dominant mechanism: **cross-agent portfolio admission + reservation + post-trade
 reconciliation.** Not an AI trader.
 
-**Verdict: LOCK** — [VERDICT_V3.md](VERDICT_V3.md)
+**Status: product lock reached** (tag `airspace-product-lock`, 11/11 criteria,
+76 passing tests, live Shannon evidence). The production build has not started —
+`contracts/`, `apps/`, `packages/`, `workers/`, `supabase/`, `scripts/` and `test/`
+are intentionally empty pending the PRD/DESIGN pass.
 
 ## The result, live on Shannon
 
@@ -26,75 +30,71 @@ release A  ->  320 / 500      C retries the identical shape  ->  ADMITTED, 470 /
 ```
 
 A's and B's orders were **unfilled** — proof that reservations occupy the envelope
-before they fill. 76 tests pass.
+before they fill.
 
-## Documents
-
-| File | What it answers |
-|---|---|
-| [VERDICT_V3.md](VERDICT_V3.md) | The verdict and its limits |
-| [AIRSPACE_LOCK_REPORT.md](AIRSPACE_LOCK_REPORT.md) | Full lock report, sponsor impact, Reactivity |
-| [STRUCTURAL_DOMAINS.md](STRUCTURAL_DOMAINS.md) | Domain derivation and cadence canonicalisation |
-| [PORTFOLIO_ACCOUNTING_V2.md](PORTFOLIO_ACCOUNTING_V2.md) | The six quantities, measured vs tracked |
-| [RESERVATION_INVARIANTS.md](RESERVATION_INVARIANTS.md) | State machine and per-invariant proofs |
-| [SCALING_REPORT.md](SCALING_REPORT.md) | Gas, storage growth, bounded collections |
-| [COMPETITOR_LOCK_DELTA.md](COMPETITOR_LOCK_DELTA.md) | The reduction test; Vane from bytecode |
-| [LIVE_LOCK_EVIDENCE.md](LIVE_LOCK_EVIDENCE.md) | Transaction hashes and expected state |
-
-## Code
+## Repository
 
 ```
-src/airspace/AirspacePortfolio.sol         the portfolio boundary
-src/airspace/AirspacePortfolioFactory.sol  deterministic per-owner clones
-test/AirspacePortfolio.fork.t.sol          29 proofs against the live deployment
-test/AirspaceScale.t.sol                    5 deterministic scale benchmarks
-test/AirspaceSponsorImpact.t.sol            3 modelled capital-efficiency sims
-script/airspace-lock-live.mjs               live 4-key multi-agent driver
+apps/          frontends                        (empty, pending PRD/DESIGN)
+contracts/     production contracts             (empty, pending PRD/DESIGN)
+packages/      shared TypeScript packages       (empty, pending PRD/DESIGN)
+workers/       off-chain keepers                (empty, pending PRD/DESIGN)
+supabase/      schema, migrations, functions    (empty, pending PRD/DESIGN)
+scripts/       operational scripts              (empty, pending PRD/DESIGN)
+test/          production tests                 (empty, pending PRD/DESIGN)
+
+engineering/   hostile-validation history — three spikes, 76 tests, live evidence
+evidence/      what is public, and which artifact backs which claim
 ```
+
+## Engineering history
+
+Read [`engineering/README.md`](engineering/README.md) first — it is the
+reviewer-facing account of how the product got here, including the two REVISE
+verdicts and the limitations that survived into LOCK.
+
+| Stage | Candidate | Verdict |
+|---|---|---|
+| [00-flightpath-feasibility](engineering/00-flightpath-feasibility/) | Single-agent execution assurance | REVISE |
+| [01-airspace-portfolio-spike](engineering/01-airspace-portfolio-spike/) | Cross-agent portfolio, owner-attested buckets | REVISE |
+| [02-product-lock](engineering/02-product-lock/) | Cross-agent portfolio, structural risk domains | **LOCK — 11/11** |
 
 ## Protocol findings that shaped the design
 
-- **`marketId → asset` exists on-chain in creation events but no view exposes it** —
-  304 selector probes across both MarketCreators and the module implementation. So
-  domains are *cadence* domains: the contract does not know BTC from ETH and never
-  claims to. Sibling series share a domain, intentionally.
+- **`placeBinaryOrderFor` reverts `OnlyApprovedContracts()` for every EOA caller**,
+  so there is no session-key path for Event Contracts — custody-by-contract is
+  forced, not chosen.
+- **`marketId → asset` exists on-chain in creation events but no view exposes it**
+  (304 selector probes). Risk domains are therefore *cadence* domains: the contract
+  does not know BTC from ETH and never claims to. Sibling series share a domain,
+  intentionally.
 - **Cadence jitter is real** — two live markets had an 898-second window on a
-  900-second series. Raw `expiry - tradingStart` is unsafe as a domain key.
+  900-second series, so raw `expiry - tradingStart` is unsafe as a domain key.
 - **`getOrder` reverts identically for filled and cancelled orders**, so a running
   exposure counter cannot stay correct. Positions are measured from ERC-6909.
-- **`placeBinaryOrderFor` reverts `OnlyApprovedContracts()` for every EOA caller**,
-  so there is no session-key path for Event Contracts — custody-by-account is forced.
-- **Pools are recycled across markets and underlyings** (one served 52 markets across
-  both BTC and ETH), so a pool allowlist binds to a mutable slot.
+- **Pools are recycled across markets and underlyings** (one served 52 markets
+  across both BTC and ETH), so a pool allowlist binds to a mutable slot.
 
-## Reproduce
+## Reproducing
 
 ```bash
+forge install foundry-rs/forge-std     # lib/ is gitignored
 forge build
-export SHANNON_RPC=https://dream-rpc.somnia.network
-
-export FORK_BLOCK=472749135
-export MKT_1=0x000000000000000000000000000000000000000000000000000000000000b278
-export MKT_2=0x000000000000000000000000000000000000000000000000000000000000b277
-forge test --match-path test/AirspacePortfolio.fork.t.sol -vv
-
-forge test --match-path test/AirspaceScale.t.sol -vv
-forge test --match-path test/AirspaceSponsorImpact.t.sol -vv
+cp .env.example .env.lock              # then fill in the stage's pinned block
 ```
 
----
+Per-stage commands are in [`engineering/README.md`](engineering/README.md).
 
-## Prior spikes (retained unchanged for auditability)
+## Security
 
-**AIRSPACE v1** — verdict REVISE. Owner-attested asset buckets; the per-market
-admission burden and the attestation are what this revision removed.
-[VERDICT_V2.md](VERDICT_V2.md) · [AIRSPACE_FINDINGS.md](AIRSPACE_FINDINGS.md) ·
-[PORTFOLIO_ACCOUNTING.md](PORTFOLIO_ACCOUNTING.md) · [RISK_IDENTITY.md](RISK_IDENTITY.md) ·
-[AUTHORITY_MODEL_V2.md](AUTHORITY_MODEL_V2.md) · [COMPETITOR_DELTA_V2.md](COMPETITOR_DELTA_V2.md) ·
-[THREAT_MODEL_V2.md](THREAT_MODEL_V2.md) · [evidence/airspace/](evidence/airspace/README.md)
+No secret has ever been committed: this repository's history begins at the
+product-lock checkpoint. `.env*`, `.wallets.json`, keystores and credentials are
+gitignored. Run the scanner yourself:
 
-**FLIGHTPATH** — verdict REVISE. Single-agent execution assurance; architecture
-sound, positioning collided with Vane.
-[VERDICT.md](VERDICT.md) · [SPIKE_FINDINGS.md](SPIKE_FINDINGS.md) ·
-[AUTHORITY_MODEL.md](AUTHORITY_MODEL.md) · [COMPETITOR_DELTA.md](COMPETITOR_DELTA.md) ·
-[THREAT_MODEL.md](THREAT_MODEL.md) · [evidence/](evidence/README.md)
+```bash
+node engineering/02-product-lock/research/onchain-probes/secret-scan.mjs .
+```
+
+The testnet wallets used in the spikes are throwaway keys; their addresses are
+published, their private keys were never tracked. See
+[`evidence/README.md`](evidence/README.md).

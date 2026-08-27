@@ -1,6 +1,9 @@
 [profile.default]
-src = "src"
-out = "out"
+# Production contracts land in contracts/ (empty until the PRD/DESIGN pass).
+src = "contracts"
+# The archived hostile-validation stages live under engineering/ and remain
+# compilable and re-runnable: `forge test` discovers every stage's suite.
+test = "engineering"
 libs = ["lib"]
 solc = "0.8.28"
 optimizer = true
@@ -12,4 +15,3 @@ memory_limit = 134217728
 
 [rpc_endpoints]
 shannon = "https://dream-rpc.somnia.network"
-fork = "http://127.0.0.1:8545"

@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {FlightAccount} from "../src/FlightAccount.sol";
-import {FlightFactory} from "../src/FlightFactory.sol";
+import {FlightAccount} from "../contracts/FlightAccount.sol";
+import {FlightFactory} from "../contracts/FlightFactory.sol";
 import {
     IBinaryMarketsModule, IBinaryPool, IBinaryMarket, IMarketCreator, IOutcomeToken6909, IERC20Min
-} from "../src/interfaces/IDreamDex.sol";
+} from "../../shared/interfaces/IDreamDex.sol";
 
 interface ITestUsdc is IERC20Min {
     function faucet(uint256 amount) external;

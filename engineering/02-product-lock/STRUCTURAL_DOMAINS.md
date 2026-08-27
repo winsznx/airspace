@@ -128,7 +128,7 @@ Two consequences follow directly, and both are features rather than apologies:
 
 If an operator genuinely needs separate BTC and ETH limits, this design cannot
 give them, and no amount of engineering on the current protocol surface can --
-see `RISK_IDENTITY.md` for the exhaustive 304-selector search that established
+see `../01-airspace-portfolio-spike/RISK_IDENTITY.md` for the exhaustive 304-selector search that established
 there is no on-chain `marketId -> asset` view. The honest options are a coarser
 but trustless domain (what AIRSPACE ships) or a semantic attestation in the
 security path (what AIRSPACE deliberately removed).

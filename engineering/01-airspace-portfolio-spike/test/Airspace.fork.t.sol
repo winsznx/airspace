@@ -2,10 +2,10 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {AirspaceAccount} from "../src/airspace/AirspaceAccount.sol";
-import {AirspaceFactory} from "../src/airspace/AirspaceFactory.sol";
-import {GlobalPolicy, BucketPolicy, AgentPolicy, Intent, AdmittedMarket} from "../src/airspace/IAirspace.sol";
-import {IBinaryMarketsModule, IBinaryPool, IOutcomeToken6909, IERC20Min} from "../src/interfaces/IDreamDex.sol";
+import {AirspaceAccount} from "../contracts/AirspaceAccount.sol";
+import {AirspaceFactory} from "../contracts/AirspaceFactory.sol";
+import {GlobalPolicy, BucketPolicy, AgentPolicy, Intent, AdmittedMarket} from "../contracts/IAirspace.sol";
+import {IBinaryMarketsModule, IBinaryPool, IOutcomeToken6909, IERC20Min} from "../../shared/interfaces/IDreamDex.sol";
 
 interface ITestUsdc is IERC20Min {
     function faucet(uint256 amount) external;

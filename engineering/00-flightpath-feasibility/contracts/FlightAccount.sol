@@ -8,7 +8,7 @@ import {
     IMarketCreator,
     IOutcomeToken6909,
     IERC20Min
-} from "./interfaces/IDreamDex.sol";
+} from "../../shared/interfaces/IDreamDex.sol";
 
 /// @title FlightAccount
 /// @notice A per-user, contract-owned execution account for DreamDEX Event Contracts.

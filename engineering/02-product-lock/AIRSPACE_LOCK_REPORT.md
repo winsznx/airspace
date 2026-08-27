@@ -211,11 +211,11 @@ pruning, a continuously trading portfolio reaches the 48-market domain cap in ab
 
 ## 8. Known limits and residual risks
 
-Full treatment in `THREAT_MODEL_V2.md` (still accurate) plus:
+Full treatment in `../01-airspace-portfolio-spike/THREAT_MODEL_V2.md` (still accurate) plus:
 
 - **Domains are coarser than assets.** A ceiling covers both sibling series at a
   cadence. Separate BTC and ETH limits are not expressible on the current protocol
-  surface, and `RISK_IDENTITY.md` records the 304-selector search that established
+  surface, and `../01-airspace-portfolio-spike/RISK_IDENTITY.md` records the 304-selector search that established
   why. This is a real product limitation, chosen over putting an attestation in the
   security path.
 - **Two mappings grow monotonically** (`intentUsed`, `_orders`). Neither is ever
@@ -245,4 +245,4 @@ Full treatment in `THREAT_MODEL_V2.md` (still accurate) plus:
 | `SCALING_REPORT.md` | gas, storage growth, bounded-collection analysis |
 | `COMPETITOR_LOCK_DELTA.md` | the reduction test, Vane from bytecode |
 | `LIVE_LOCK_EVIDENCE.md` | transaction hashes and expected state |
-| `evidence/airspace-lock/` | raw artifacts |
+| `evidence/` | raw artifacts |
