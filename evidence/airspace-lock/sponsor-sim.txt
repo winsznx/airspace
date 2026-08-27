@@ -1,0 +1,20 @@
+[PASS] test_I1_sharedPoolAdmitsTheWholeSchedule() (gas: 6654780)
+  === SHARED POOL (modelled) ===
+  domain ceiling (contracts): 300
+  capital pools funded: 1
+  risk budgets funded (contracts): 300
+  intents admitted: 6
+  intents rejected: 0
+[PASS] test_I2_isolatedVaultsStrandCapacity() (gas: 10837260)
+  === ISOLATED VAULTS (modelled) ===
+  per-vault ceiling (contracts): 100
+  capital pools funded: 3
+  intents admitted: 3
+  intents rejected: 3
+[PASS] test_I3_isolatedNeedsMoreRiskBudgetForTheSameSchedule() (gas: 11265001)
+  === SAME SCHEDULE, BOTH MODELS (modelled) ===
+  shared: risk budget funded (contracts): 300
+  isolated: risk budget funded (contracts): 900
+  ratio x100: 300
+  intents admitted (isolated, fully funded): 6
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 3.34ms (6.54ms CPU time)

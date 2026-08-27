@@ -1,0 +1,224 @@
+{
+  "chainId": 50312,
+  "startedAt": "2026-08-27T15:07:56.789Z",
+  "protocol": {
+    "MODULE": "0x3ecC694Cef705358864a646142ac17A90E29e388",
+    "OUTCOME": "0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9",
+    "TUSDC": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+    "MARKET_CREATOR": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
+    "FACTORY": "0x96F5f7aCED65149440dC8807C2CD2f66514fc2a2"
+  },
+  "actors": {
+    "owner": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
+    "agent": "0x60536020d9926512dd8F806466431c1e504B29aB"
+  },
+  "steps": [
+    {
+      "name": "00-market-selected",
+      "marketId": "0x000000000000000000000000000000000000000000000000000000000000b00d",
+      "asset": "BTC",
+      "intervalSec": 14400,
+      "pool": "0x3693799C1F707162acf8777a718B7E20f54a750D",
+      "market": "0xaC958A230E32c1cf221994f96154D17C1051E59D",
+      "creator": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
+      "collateral": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+      "marketNonce": "93",
+      "tradingStart": "1787832000",
+      "expiry": "1787846400",
+      "secondsLeft": 3121,
+      "cadenceOnChain": 14400,
+      "yesId": "1471368054293953572216796932130355020716743364408357155683508517100800",
+      "noId": "1471368054293953572216796932130355020716743364408357155683508517100801",
+      "grid": {
+        "tickSize": "1000",
+        "minQuantity": "1000",
+        "lotSize": "1000"
+      },
+      "bestAsk": {
+        "price": "966000",
+        "quantity": "200000000"
+      }
+    },
+    {
+      "name": "01-account-created",
+      "account": "0x083663A3849b795F423F6d8E9129394A479484Bd",
+      "salt": "0x67f76893b441769f0a816a815e6cc5f5445e1ac1e8dd870fcc49054bba846c00",
+      "hash": "0x5a65fe6a316512255b274fa0df8bc227a7800958ed5e9137d18aab7d5d65163c",
+      "status": "success",
+      "gasUsed": "1467848",
+      "blockNumber": "472703228"
+    },
+    {
+      "name": "02-account-funded",
+      "account": "0x083663A3849b795F423F6d8E9129394A479484Bd",
+      "tUSDC": "2000000000",
+      "hash": "0x2913a35f89f3a167bdb274694e3286f0488afb0ac1dbec5bd9cbd6566518779c",
+      "status": "success",
+      "gasUsed": "279797",
+      "blockNumber": "472703249"
+    },
+    {
+      "name": "03-policy-set",
+      "policyHash": "0xa38d57a7867f22138a82b1e8e09ab94f407e7338f738d420d53833c83405be6d",
+      "policy": {
+        "mode": 0,
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000b00d",
+        "marketCreator": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
+        "seriesId": 5,
+        "assetHash": "0xe98e2830be1a7e4156d656a7505e65d08c67660dc618072422e9c78053c261e9",
+        "collateral": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+        "intervalSec": "14400",
+        "maxOrderNotional": "500000000",
+        "maxExposure": "1000000000",
+        "maxBuyPrice": "966000",
+        "minSellPrice": "300000",
+        "minHeadroomSec": "300",
+        "cooldownSec": "0",
+        "policyExpiry": "1787846879"
+      },
+      "hash": "0x6bffe1f1983f581e1e2182b0a0191c94d28643943293aa2a94bf590b83d03b3b",
+      "status": "success",
+      "gasUsed": "1926165",
+      "blockNumber": "472703267"
+    },
+    {
+      "name": "04-agent-trade",
+      "intent": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000b00d",
+        "pool": "0x3693799C1F707162acf8777a718B7E20f54a750D",
+        "marketNonce": "93",
+        "kind": 0,
+        "price": "966000",
+        "quantity": "200000000",
+        "expireTimestampNs": "1787846400000000000",
+        "orderType": 2,
+        "nonce": "1",
+        "strategyVersion": "0x44f25dc44a42a56e1de2eabf9cfcf2b117bf271712a613dd97ddc44fa92a7b4e"
+      },
+      "intentHash": "0x0fae8990993ded238d4ef22402563680a48cedb7eab6a74104733beb937b79f5",
+      "policyHash": "0xa38d57a7867f22138a82b1e8e09ab94f407e7338f738d420d53833c83405be6d",
+      "preTradeStateHash": "0x914f4bbba6beb05bfa5b6f1336395704a566a3d4c282971b1dd295d5b8b19d6b",
+      "hash": "0xf0198627202a78bd12448fee967be80898e9c34151a46ee3ce9589e72ebc0536",
+      "status": "success",
+      "gasUsed": "1585163",
+      "blockNumber": "472703293",
+      "collateralSpent": "192000000",
+      "resultingExposure": {
+        "account_YES": "200000000",
+        "agent_YES": "0",
+        "ownerEOA_YES": "0",
+        "agent_tUSDC": "0"
+      },
+      "custodyAssertion": "POSITION HELD BY EXECUTION ACCOUNT ONLY"
+    },
+    {
+      "name": "05-negatives-simulated-live",
+      "count": 10,
+      "negs": [
+        {
+          "label": "N-replay (same nonce)",
+          "expected": "IntentReplayed",
+          "got": "IntentReplayed",
+          "selector": null
+        },
+        {
+          "label": "N-wrong-marketId",
+          "expected": "MarketNotBound",
+          "got": "MarketNotBound",
+          "selector": null
+        },
+        {
+          "label": "N-stale-generation",
+          "expected": "GenerationMismatch",
+          "got": "GenerationMismatch",
+          "selector": null
+        },
+        {
+          "label": "N-pool-substitution",
+          "expected": "PoolMismatch",
+          "got": "PoolMismatch",
+          "selector": null
+        },
+        {
+          "label": "N-price-outside-policy",
+          "expected": "PriceOutsidePolicy",
+          "got": "PriceOutsidePolicy",
+          "selector": null
+        },
+        {
+          "label": "N-off-tick-grid",
+          "expected": "OffTickGrid",
+          "got": "OffTickGrid",
+          "selector": null
+        },
+        {
+          "label": "N-agent-cannot-withdraw",
+          "expected": "NotOwner",
+          "got": "NotOwner",
+          "selector": null
+        },
+        {
+          "label": "N-agent-cannot-withdraw-outcome",
+          "expected": "NotOwner",
+          "got": "NotOwner",
+          "selector": null
+        },
+        {
+          "label": "N-agent-cannot-ownerCall",
+          "expected": "NotOwner",
+          "got": "NotOwner",
+          "selector": null
+        },
+        {
+          "label": "N-agent-cannot-setAgent",
+          "expected": "NotOwner",
+          "got": "NotOwner",
+          "selector": null
+        }
+      ]
+    },
+    {
+      "name": "06-negatives-broadcast",
+      "broadcastNegs": [
+        {
+          "label": "over-order-notional",
+          "hash": "0x8d360c2db6aa15a380871f223e2a2050eae2ceddeb1e484122e0c4d823187904",
+          "status": "reverted"
+        },
+        {
+          "label": "agent-withdraw",
+          "hash": "0x8c1f3d5c47f0df080c6039a0109738bce4e81ab6f2e76f4c85fdc66775203b65",
+          "status": "reverted"
+        }
+      ]
+    },
+    {
+      "name": "07-owner-recovery",
+      "agentRevoked": true,
+      "revokeTx": {
+        "hash": "0x030ac5e93011bc54b9c2b454e5ff54b69ba90c8ef7aef08422af35ebe8608d97",
+        "status": "success",
+        "gasUsed": "46382",
+        "blockNumber": "472703385"
+      },
+      "collateralRecovered": "1808000000",
+      "collateralTx": {
+        "hash": "0x8ee6d770d5086fa5dd1e0df6508155a2b379d934b89c7102c45b759ca42b9368",
+        "status": "success",
+        "gasUsed": "292438",
+        "blockNumber": "472703402"
+      },
+      "positionRecovered": "200000000",
+      "positionTx": {
+        "hash": "0x46d343161a9d594b1091eabef1927a0af6acc28b3e97ce280f56be240f65ca50",
+        "status": "success",
+        "gasUsed": "306613",
+        "blockNumber": "472703421"
+      },
+      "accountResidualCollateral": "0",
+      "accountResidualPosition": "0",
+      "ownerHoldsPosition": "200000000"
+    }
+  ],
+  "finishedAt": "2026-08-27T15:08:20.738Z"
+}

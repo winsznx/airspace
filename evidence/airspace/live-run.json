@@ -1,0 +1,221 @@
+{
+  "chainId": 50312,
+  "startedAt": "2026-08-27T15:49:25.570Z",
+  "actors": {
+    "owner": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
+    "agentA": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+    "agentB": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+    "agentC": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20"
+  },
+  "steps": [
+    {
+      "name": "00-markets",
+      "m1": {
+        "id": "0x000000000000000000000000000000000000000000000000000000000000a8cd",
+        "cadence": 86400,
+        "pool": "0x3ae79C8A2C3197B57Af3715B74BA1E96BCE82607",
+        "nonce": "87",
+        "secondsLeft": 29432
+      },
+      "m2": {
+        "id": "0x000000000000000000000000000000000000000000000000000000000000b1dd",
+        "cadence": 3600,
+        "pool": "0xFF52C100d53365365d655Af84b2Db121fE86f0a3",
+        "nonce": "136",
+        "secondsLeft": 632
+      }
+    },
+    {
+      "name": "01-portfolio",
+      "factory": "0xdcf7b2401ee319e40205845c4908992621c52ce6",
+      "portfolio": "0xa0d34Dd309Cd061707300A1aa9be2a3Febd0a577",
+      "factoryTx": "0x0021a091d479ee6b1428a09f9b31b135c38747fcfc17914da0916eb1bb83761f",
+      "hash": "0x005d0fe58c7f5b65b6a62da7c96b6249a34753f96b52901c6b3ec37d68f62f15",
+      "status": "success",
+      "blockNumber": "472728138"
+    },
+    {
+      "name": "02-funded",
+      "tUSDC": "6000000000",
+      "capitalBase": "6000000000"
+    },
+    {
+      "name": "03-configured",
+      "globalPolicyHash": "0xabb02abb8f1dd01657265872c9ec6167573eb1492fa9c582a05bc5b3471b13ed",
+      "bucket": "BTC",
+      "maxGrossDirectional": "500000000",
+      "agents": [
+        "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+        "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+        "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20"
+      ]
+    },
+    {
+      "name": "04-agentA",
+      "intent": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000a8cd",
+        "pool": "0x3ae79C8A2C3197B57Af3715B74BA1E96BCE82607",
+        "marketNonce": "87",
+        "kind": 0,
+        "price": "814000",
+        "quantity": "180000000",
+        "expireTimestampNs": "1787875200000000000",
+        "orderType": 3,
+        "nonce": "1",
+        "strategyVersion": "0xfc50cdf802133805a84e9a35dfadc537dc2dcc36bf34c0f6b184a7c5ef7b3c4a"
+      },
+      "hash": "0xe8d3862394f493dabe19f57de4f7b85fff60f63a21d71f3bd2dae89e3edb7077",
+      "status": "success",
+      "blockNumber": "472728325",
+      "bucketGrossAfter": "180000000"
+    },
+    {
+      "name": "05-agentB",
+      "intent": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000b1dd",
+        "pool": "0xFF52C100d53365365d655Af84b2Db121fE86f0a3",
+        "marketNonce": "136",
+        "kind": 0,
+        "price": "739000",
+        "quantity": "240000000",
+        "expireTimestampNs": "1787846400000000000",
+        "orderType": 3,
+        "nonce": "2",
+        "strategyVersion": "0xfc50cdf802133805a84e9a35dfadc537dc2dcc36bf34c0f6b184a7c5ef7b3c4a"
+      },
+      "hash": "0xead1e374953217bfde6ee5f30124ff1f6f868fb26cab6692add77476c0b69f06",
+      "status": "success",
+      "blockNumber": "472728346",
+      "bucketGrossAfter": "420000000",
+      "cadenceA": 86400,
+      "cadenceB": 3600
+    },
+    {
+      "name": "06-agentC-rejected",
+      "intent": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000a8cd",
+        "pool": "0x3ae79C8A2C3197B57Af3715B74BA1E96BCE82607",
+        "marketNonce": "87",
+        "kind": 0,
+        "price": "814000",
+        "quantity": "150000000",
+        "expireTimestampNs": "1787875200000000000",
+        "orderType": 3,
+        "nonce": "3",
+        "strategyVersion": "0xfc50cdf802133805a84e9a35dfadc537dc2dcc36bf34c0f6b184a7c5ef7b3c4a"
+      },
+      "label": "C rejected by AGGREGATE portfolio exposure",
+      "expected": "BucketDirectionalExceeded",
+      "got": "BucketDirectionalExceeded",
+      "arithmetic": "180000000 (A) + 240000000 (B) + 150000000 (C) = 570000000 > 500000000 ceiling",
+      "cCommittedBefore": "0",
+      "proofOfIndividualValidity": {
+        "cMaxOrderNotional": "2000000000",
+        "cMaxCommitted": "3000000000",
+        "note": "C's own policy admits this order in full"
+      }
+    },
+    {
+      "name": "07-compromised-C",
+      "count": 11,
+      "negs": [
+        {
+          "label": "C: alternate pool",
+          "expected": "PoolMismatch",
+          "got": "PoolMismatch"
+        },
+        {
+          "label": "C: recycled/stale generation",
+          "expected": "GenerationMismatch",
+          "got": "GenerationMismatch"
+        },
+        {
+          "label": "C: price grief",
+          "expected": "PriceOutsidePolicy",
+          "got": "PriceOutsidePolicy"
+        },
+        {
+          "label": "C: direct withdrawal",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: outcome withdrawal",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: ownerCall escalation",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: rewrite another agent's policy",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: widen the bucket ceiling",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: admit a market into another bucket",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: release another agent's live reservation",
+          "expected": "OrderStillLive",
+          "got": "OrderStillLive"
+        },
+        {
+          "label": "A: replay a used intent",
+          "expected": "IntentReplayed",
+          "got": "IntentReplayed"
+        }
+      ],
+      "bucketGrossUnchanged": "420000000"
+    },
+    {
+      "name": "08-released",
+      "orderKey": "0x99e2bde6ccab35f29306733fc32b8cba504736e28c30b1d78fc5d913a114a801",
+      "orderId": "73786976294838463086",
+      "hash": "0xc8b3cc5e1d969bc752923f5df7d2722ea532363c62fac971d29014a91fc24e7c",
+      "status": "success",
+      "blockNumber": "472728420",
+      "bucketGrossAfter": "240000000",
+      "note": "release only ever moves the books toward what the pool reports"
+    },
+    {
+      "name": "09-agentC-admitted",
+      "intent": {
+        "marketId": "0x000000000000000000000000000000000000000000000000000000000000a8cd",
+        "pool": "0x3ae79C8A2C3197B57Af3715B74BA1E96BCE82607",
+        "marketNonce": "87",
+        "kind": 0,
+        "price": "814000",
+        "quantity": "150000000",
+        "expireTimestampNs": "1787875200000000000",
+        "orderType": 3,
+        "nonce": "4",
+        "strategyVersion": "0xfc50cdf802133805a84e9a35dfadc537dc2dcc36bf34c0f6b184a7c5ef7b3c4a"
+      },
+      "hash": "0x54ae5be3e9bbd5fba43c385b4be4124ed04fe0f35d2526198e0b5f785cc0b5b0",
+      "status": "success",
+      "blockNumber": "472728443",
+      "bucketGrossAfter": "390000000",
+      "arithmetic": "240000000 + 150000000 = 390000000 <= 500000000"
+    },
+    {
+      "name": "10-owner-recovery",
+      "agentsRevoked": 3,
+      "collateralRecovered": "6000000000",
+      "residualInPortfolio": "0",
+      "ownerBalance": "7808000000"
+    }
+  ],
+  "finishedAt": "2026-08-27T15:50:14.751Z",
+  "portfolio": "0xa0d34Dd309Cd061707300A1aa9be2a3Febd0a577",
+  "factory": "0xdcf7b2401ee319e40205845c4908992621c52ce6"
+}

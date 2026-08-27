@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# Secrets and local state -- NEVER commit.
+# Note: `.env` alone is not enough; the research pass used .env.fork/.env.airspace/
+# .env.lock, so the glob is mandatory.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.wallets.json
+wallets.json
+*.key
+*.pem
+*.p12
+*.keystore
+keystore/
+mnemonic*
+secrets*
+*.secret
+service-role*
+.secrets/
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+node_modules/
+lib/
+
+# ---------------------------------------------------------------------------
+# Build output and caches
+# ---------------------------------------------------------------------------
+out/
+cache/
+cache_forge/
+broadcast/
+artifacts/
+typechain-types/
+coverage/
+*.lcov
+.next/
+dist/
+.turbo/
+
+# ---------------------------------------------------------------------------
+# Vendored research inputs. Public and reproducible -- see engineering/README.md
+# for the exact commands. Not vendored because botkit/ carries its own .git and
+# sdkprobe/ is ~92MB of node_modules.
+# ---------------------------------------------------------------------------
+botkit/
+sdkprobe/
+recon/
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,203 @@
+{
+  "chainId": 50312,
+  "startedAt": "2026-08-27T16:31:07.651Z",
+  "actors": {
+    "owner": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
+    "agentA": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+    "agentB": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+    "agentC": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20"
+  },
+  "steps": [
+    {
+      "name": "00-markets",
+      "domainInputs": {
+        "creator": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
+        "collateral": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+        "cadenceSec": 14400
+      },
+      "m1": {
+        "id": "0xb278",
+        "pool": "0xC3E2b06a7a9e35170785a01595A09e4Aed8a78DF",
+        "nonce": "91",
+        "secondsLeft": 12529
+      },
+      "m2": {
+        "id": "0xb277",
+        "pool": "0x31246c0DECA791C051094801aF218D5387dC24a2",
+        "nonce": "105",
+        "secondsLeft": 12529
+      },
+      "note": "two distinct markets, distinct pools, distinct generations, ONE structural domain"
+    },
+    {
+      "name": "01-portfolio",
+      "factory": "0x04435480444159b6f6d1398dc84f560c6fc3bbb6",
+      "portfolio": "0x2F9BE34ae56C7be945211e011CC189ECC5941Ab8",
+      "factoryTx": "0x91e62ac12d12edb096b5a2c07dc1dad0f4b542a73e25dba325f902ad149a29f8",
+      "hash": "0xf26076b25d7a36ebb09992229fd9cdf5caec55730b5e32e781c2a8107038c3f1",
+      "status": "success",
+      "blockNumber": "472753523",
+      "gasUsed": "1252414"
+    },
+    {
+      "name": "02-structural-domain",
+      "domainOf_m1": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900",
+      "domainOf_m2": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900",
+      "domainKey_recomputed": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900",
+      "siblingsShareDomain": true,
+      "matchesCreatorCollateralCadence": true,
+      "note": "derived from module.markets() at call time -- no indexer, no asset string, no attestation"
+    },
+    {
+      "name": "03-configured",
+      "domain": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900",
+      "maxDomainRiskUsage": "500000000",
+      "agents": 3,
+      "ownerNonce": 42
+    },
+    {
+      "name": "04-agentA",
+      "market": "0xb278",
+      "hash": "0xc5541d26fe40a0aca94bbc9c0a087abd57e8feda108134cc2925d3bfd98532d2",
+      "status": "success",
+      "blockNumber": "472753668",
+      "gasUsed": "4370629",
+      "domainRiskUsage": "180000000"
+    },
+    {
+      "name": "05-agentB",
+      "market": "0xb277",
+      "hash": "0xa298ed4977f89e793d32b74146493de21b70c9b003c0b0e3839d2569cffb0275",
+      "status": "success",
+      "blockNumber": "472753689",
+      "gasUsed": "4213939",
+      "domainRiskUsage": "420000000",
+      "ownerTxSinceConfig": 0
+    },
+    {
+      "name": "06-agentC-rejected",
+      "label": "C rejected by CROSS-AGENT domain state",
+      "expected": "DomainRiskExceeded",
+      "got": "DomainRiskExceeded",
+      "arithmetic": "180000000 (A) + 240000000 (B) + 150000000 (C) = 570000000 > 500000000",
+      "cCommittedBefore": "0",
+      "cCommittedAfter": "0",
+      "unchanged": true,
+      "domainRiskUsageUnchanged": true,
+      "individualValidity": {
+        "cMaxOrderNotional": "3000000000",
+        "cMaxCommitted": "4000000000",
+        "note": "C's own policy admits this order in full"
+      }
+    },
+    {
+      "name": "07-hostile-C",
+      "count": 11,
+      "negs": [
+        {
+          "label": "C: sibling-market switch does not escape the domain",
+          "expected": "DomainRiskExceeded",
+          "got": "DomainRiskExceeded"
+        },
+        {
+          "label": "C: alternate pool",
+          "expected": "PoolMismatch",
+          "got": "PoolMismatch"
+        },
+        {
+          "label": "C: recycled generation",
+          "expected": "GenerationMismatch",
+          "got": "GenerationMismatch"
+        },
+        {
+          "label": "C: price grief",
+          "expected": "PriceOutsidePolicy",
+          "got": "PriceOutsidePolicy"
+        },
+        {
+          "label": "C: direct withdrawal",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: outcome withdrawal",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: ownerCall escalation",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: rewrite another agent's policy",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "C: widen the domain ceiling",
+          "expected": "NotOwner",
+          "got": "NotOwner"
+        },
+        {
+          "label": "A: replay a used intent",
+          "expected": "IntentReplayed",
+          "got": "IntentReplayed"
+        },
+        {
+          "label": "C: release another agent's LIVE reservation",
+          "expected": "OrderStillLive",
+          "got": "OrderStillLive"
+        }
+      ]
+    },
+    {
+      "name": "08-concurrency-race",
+      "ceiling": "520000000",
+      "each": "80000000",
+      "results": [
+        {
+          "who": "A",
+          "hash": "0xa146bc08751da6ae31773201f8728d33d2e2d5f4866eb61e4634af260e0fce42",
+          "status": "success",
+          "block": "472753757"
+        },
+        {
+          "who": "B",
+          "hash": "0x6fe4204c783e42e0ae67f776b7c6d7a04badf06f9cc879347f03f4d8b62e6480",
+          "status": "reverted",
+          "block": "472753761"
+        }
+      ],
+      "domainRiskUsageAfter": "500000000",
+      "note": "both submitted together; atomic contract state admits only what fits"
+    },
+    {
+      "name": "09-released",
+      "hash": "0xa60e54b2c8ad098317163116efb040c1fece900aaab83136c7c882d2005e4039",
+      "status": "success",
+      "blockNumber": "472753797",
+      "gasUsed": "70034",
+      "domainRiskUsage": "320000000"
+    },
+    {
+      "name": "10-agentC-admitted",
+      "hash": "0x2ef3df611cfa29ed9fbae24a96b3dfc339566c3460fc5a3b01d15611583eb6e8",
+      "status": "success",
+      "blockNumber": "472753833",
+      "gasUsed": "2544622",
+      "domainRiskUsage": "470000000",
+      "arithmetic": "320000000 + 150000000 = 470000000 <= 500000000"
+    },
+    {
+      "name": "11-owner-recovery",
+      "agentsRevoked": 3,
+      "recovered": "5965440000",
+      "residual": "0"
+    }
+  ],
+  "finishedAt": "2026-08-27T16:32:34.371Z",
+  "portfolio": "0x2F9BE34ae56C7be945211e011CC189ECC5941Ab8",
+  "factory": "0x04435480444159b6f6d1398dc84f560c6fc3bbb6",
+  "domain": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900"
+}

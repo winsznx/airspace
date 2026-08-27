@@ -1,0 +1,22 @@
+[PASS] test_C10_agentBudgetIsSeparateFromPortfolioBudget() (gas: 306130)
+[PASS] test_C1_compromisedAgentCannotWithdraw() (gas: 36277)
+[PASS] test_C2_agentCannotTouchAnotherAgentsPolicyOrIdentity() (gas: 44060)
+[PASS] test_C3_agentCannotImpersonateAnotherAgent() (gas: 997799)
+[PASS] test_C4_unregisteredCallerIsNotAnAgent() (gas: 47615)
+[PASS] test_C5_disabledAgentIsRefused() (gas: 72585)
+[PASS] test_C6_unadmittedMarketIsDeniedByDefault() (gas: 98780)
+[PASS] test_C7_poolSubstitutionAndStaleGenerationFail() (gas: 236525)
+[PASS] test_C8_replayFails() (gas: 997688)
+[PASS] test_C9_priceGriefFails() (gas: 151745)
+[PASS] test_O1_ownerRecoversWithAllAgentsRevoked() (gas: 1489814)
+[PASS] test_O2_recoveryDoesNotDependOnPortfolioState() (gas: 1040767)
+[PASS] test_R1_restingOrdersCannotHideAggregateExposure() (gas: 2013062)
+[PASS] test_R2_reservationSurvivesAsFilledPlusResting() (gas: 612490)
+[PASS] test_R3_nonCrossingIocConsumesNothing() (gas: 529491)
+[PASS] test_R4_releaseCannotBeForgedWhileTheOrderIsLive() (gas: 1032669)
+[PASS] test_X1_crossAgentAggregateRejection() (gas: 2472649)
+[PASS] test_X2_singleAgentHitsTheSamePortfolioCeiling() (gas: 1172243)
+Suite result: ok. 18 passed; 0 failed; 0 skipped; finished in 1.82s (38.74ms CPU time)
+FORK_BLOCK=472724061
+BTC_MARKET_1=0x000000000000000000000000000000000000000000000000000000000000a8cd
+BTC_MARKET_2=0x000000000000000000000000000000000000000000000000000000000000b1dd

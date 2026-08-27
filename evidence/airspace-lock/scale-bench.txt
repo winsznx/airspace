@@ -1,0 +1,20 @@
+[PASS] test_S1_hundredPortfolios() (gas: 11546545)
+  100 portfolios, total gas: 11542169
+  per portfolio: 115421
+[PASS] test_S2_thousandAgents() (gas: 90476126)
+  1000 agent registrations, total gas: 78916096
+  per agent: 78916
+[PASS] test_S3_tenThousandIntents() (gas: 3672077759)
+  10000 intents, total gas: 3869068056
+  per intent: 386906
+  domain markets tracked: 1
+[PASS] test_S4_rollingGenerationsStayBounded() (gas: 575760500)
+  generations processed: 500
+  peak domain collection size: 1
+  final domain collection size: 0
+[PASS] test_S5_collectionIsCappedNotUnbounded() (gas: 79065965)
+  cap: 48
+  admitted: 48
+  domainRiskUsage over a FULL domain, gas: 244164
+  usage: 48000000
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 1.96s (2.20s CPU time)
