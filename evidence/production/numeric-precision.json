@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-08-28T12:05:27.389617Z",
+  "defect": "PostgREST serialises numeric(78,0) as a JSON number, so a 21-digit DreamDEX order id lost precision on the round trip and every derived reservation key was wrong.",
+  "example": {
+    "onChain": "239807672958224550581",
+    "asJsonNumber": "239807672958224560000",
+    "backToBigInt": "239807672958224564224",
+    "equal": false
+  },
+  "blastRadius": [
+    "53 reservation rows keyed on a value that matched nothing in the contract",
+    "the lifecycle worker read those keys, so every releaseOrder answered NothingToRelease and it silently released nothing",
+    "the domain stayed pinned at its ceiling and all three agents were refused DOMAIN_RISK_EXCEEDED"
+  ],
+  "notAffected": [
+    "the contract, which never reads a projection",
+    "admission decisions, which are re-derived on chain at execution time",
+    "the intents and receipts projections, whose identity is intent_hash"
+  ],
+  "fixes": [
+    "indexer keeps the admitted pool/nonce/orderId in memory for the reconcile in the same transaction, so the values never make the round trip",
+    "every numeric(78,0) column is selected ::text by the API",
+    "projection writes are checked; an unchecked supabase-js upsert is a silent no-op, which is how a bad column name went unnoticed",
+    "lifecycle marks a reservation NEEDS_RECONCILIATION when the contract has no record under its key, instead of reporting success"
+  ],
+  "verification": {
+    "method": "The contract emits its own orderKey in ReservationReleased. The TypeScript mirror was re-derived from the matching IntentAdmitted log and compared.",
+    "contractOrderKey": "0xb3cfc88b4e102685b77af2b32947294e7092cc515a552123ad055f12fc70f2d3",
+    "derivedFrom": {
+      "pool": "0x54D90260Fe949940A80602E7fDa8ebD729c5BE00",
+      "marketNonce": 99,
+      "orderId": "239807672958224503333"
+    },
+    "match": true
+  },
+  "repair": "Reservation rows deleted, cursor rewound, projections rebuilt from chain logs. Nothing was reconstructed by hand."
+}

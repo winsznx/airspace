@@ -125,7 +125,16 @@ export function ControlRoom() {
           </Link>
         </div>
 
-        {configured.length === 0 ? (
+        {/*
+          Domains are derived from the live market registry, so until that read
+          lands the portfolio snapshot has nothing to report a ceiling for.
+          Saying "no domain has a ceiling" in that window would be false.
+        */}
+        {markets.isLoading && configured.length === 0 ? (
+          <LoadingCard rows={4} />
+        ) : markets.isError && configured.length === 0 ? (
+          <ErrorState error={markets.error} retry={() => void markets.refetch()} />
+        ) : configured.length === 0 ? (
           <Empty
             title="No domain has a ceiling yet"
             action={

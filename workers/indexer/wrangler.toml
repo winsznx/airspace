@@ -16,6 +16,6 @@ SHANNON_RPC = "https://dream-rpc.somnia.network"
 SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
 AIRSPACE_FACTORY = "0x342d200aCF529905CC815D4ff9841053ea1c2D61"
 SUPABASE_URL = "https://ldhkqnedurkaxehufchg.supabase.co"
-INGEST_WINDOW = "5000"
+INGEST_WINDOW = "20000"
 
 # Secrets (wrangler secret put): SUPABASE_SERVICE_ROLE_KEY, INDEXER_TOKEN

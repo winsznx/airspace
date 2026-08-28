@@ -608,6 +608,35 @@ async function portfolioRow(env: Env, address: string) {
   return { db, id: data?.id as string | undefined };
 }
 
+/**
+ * Every `numeric(78, 0)` column, per table.
+ *
+ * PostgREST serialises `numeric` as a JSON NUMBER, so a value above 2^53 arrives
+ * at the client already wrong: an order id of 239807672958224550581 comes back
+ * as 239807672958224560000. Selecting these `::text` keeps them exact all the
+ * way to the browser, where they become BigInt.
+ */
+const NUMERIC_COLUMNS: Record<string, readonly string[]> = {
+  intents: ["price", "quantity", "order_id"],
+  receipts: [
+    "reserve_required",
+    "filled_qty",
+    "filled_cost",
+    "resting_qty",
+    "directional_before",
+    "directional_after",
+    "domain_usage_before",
+    "domain_usage_after",
+    "committed_after",
+  ],
+  reservations: ["qty_open", "collateral_reserved"],
+  positions: ["yes_balance", "no_balance", "directional_exposure"],
+};
+
+/** `*` plus a text cast for each numeric column, which overrides the `*` copy. */
+const selectFor = (table: string): string =>
+  ["*", ...(NUMERIC_COLUMNS[table] ?? []).map((col) => `${col}::text`)].join(",");
+
 for (const [route, table, order] of [
   ["intents", "intents", "block_number"],
   ["receipts", "receipts", "block_number"],
@@ -621,7 +650,7 @@ for (const [route, table, order] of [
     if (!id) return c.json({ [route]: [], total: 0, note: "portfolio not yet indexed" });
 
     const { limit, offset } = page(c);
-    let q = db.from(table).select("*", { count: "exact" }).eq("portfolio_id", id);
+    let q = db.from(table).select(selectFor(table), { count: "exact" }).eq("portfolio_id", id);
     const agent = c.req.query("agent");
     if (agent && isAddress(agent)) q = q.eq("agent_address", agent.toLowerCase());
     const status = c.req.query("status");
@@ -636,12 +665,16 @@ app.get("/api/receipts/:intentHash", async (c) => {
   const h = c.req.param("intentHash");
   if (!isBytes32(h)) return bad(c, "invalid intent hash");
   const db = createPublicDb(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY);
-  const { data } = await db.from("receipts").select("*").eq("intent_hash", h).maybeSingle();
+  const { data } = await db.from("receipts").select(selectFor("receipts")).eq("intent_hash", h).maybeSingle();
   if (!data) return c.json({ error: "RECEIPT_NOT_FOUND" }, 404);
 
-  const refusal = data.refusal_code as number | null;
+  // The `::text` casts put the row outside supabase-js's generated row type, so
+  // it comes back untyped. The shape is the `receipts` table, minus the numeric
+  // columns which are now strings.
+  const receipt = data as unknown as Record<string, unknown>;
+  const refusal = receipt.refusal_code as number | null;
   return c.json({
-    receipt: data,
+    receipt,
     copy: refusal ? (REFUSAL_COPY[refusal] ?? null) : null,
     refusalName: refusal ? (REFUSAL_NAME[refusal] ?? null) : null,
   });

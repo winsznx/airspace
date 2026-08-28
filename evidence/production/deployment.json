@@ -34,7 +34,8 @@
         "secrets": [
           "SUPABASE_SERVICE_ROLE_KEY",
           "INDEXER_TOKEN"
-        ]
+        ],
+        "ingestWindow": 20000
       },
       "airspace-lifecycle": {
         "url": "https://airspace-lifecycle.timjosh507.workers.dev",
@@ -42,8 +43,11 @@
         "trigger": "cron * * * * *",
         "queue": "airspace-reconcile (producer and consumer)",
         "secrets": [
-          "SUPABASE_SERVICE_ROLE_KEY"
-        ]
+          "SUPABASE_SERVICE_ROLE_KEY",
+          "KEEPER_PRIVATE_KEY"
+        ],
+        "keeperAddress": "0x60536020d9926512dd8F806466431c1e504B29aB",
+        "keeperNote": "Release and prune are permissionless, so the keeper needs gas and no authority. It cannot move capital, change a policy or trade."
       },
       "airspace-agent-momentum": {
         "role": "sample agent",
@@ -51,7 +55,13 @@
         "agentAddress": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
         "secrets": [
           "AGENT_PRIVATE_KEY"
-        ]
+        ],
+        "url": "https://airspace-agent-momentum.timjosh507.workers.dev",
+        "routes": {
+          "GET /health": "public",
+          "GET /status": "public, read-only: the last scheduled tick result",
+          "POST /tick": "gated behind AGENT_TOKEN; spends the agent's gas"
+        }
       },
       "airspace-agent-reversion": {
         "role": "sample agent",
@@ -59,7 +69,13 @@
         "agentAddress": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
         "secrets": [
           "AGENT_PRIVATE_KEY"
-        ]
+        ],
+        "url": "https://airspace-agent-reversion.timjosh507.workers.dev",
+        "routes": {
+          "GET /health": "public",
+          "GET /status": "public, read-only: the last scheduled tick result",
+          "POST /tick": "gated behind AGENT_TOKEN; spends the agent's gas"
+        }
       },
       "airspace-agent-spread": {
         "role": "sample agent",
@@ -67,7 +83,13 @@
         "agentAddress": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20",
         "secrets": [
           "AGENT_PRIVATE_KEY"
-        ]
+        ],
+        "url": "https://airspace-agent-spread.timjosh507.workers.dev",
+        "routes": {
+          "GET /health": "public",
+          "GET /status": "public, read-only: the last scheduled tick result",
+          "POST /tick": "gated behind AGENT_TOKEN; spends the agent's gas"
+        }
       }
     },
     "queues": [

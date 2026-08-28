@@ -13,6 +13,7 @@ is a mock.
 | [`adversarial.json`](adversarial.json) | `scripts/adversarial.mjs` | 13 hostile cases, 13 passes, nothing skipped |
 | [`scale.json`](scale.json) | `scripts/scale.mjs` | Read path at 100 portfolios / 1,000 agents / 10,000 intents |
 | [`deployment.json`](deployment.json) | recorded at deploy | Every deployed component, its trigger and its secret NAMES |
+| [`numeric-precision.json`](numeric-precision.json) | found in production | A projection defect, its blast radius, and the proof the fix is right |
 
 ---
 
@@ -45,6 +46,36 @@ out-of-gas. And the shared envelope bound hard:
 
 In rounds 15 and 16 all three agents were refused at once, each by what the other
 two already held.
+
+---
+
+## The second thing production found
+
+`numeric-precision.json` records a defect that only appeared once real data ran
+through the whole stack. PostgREST serialises `numeric` as a JSON **number**, and
+DreamDEX order ids are 21 digits:
+
+```
+on chain          239807672958224550581
+as a JSON number  239807672958224560000
+```
+
+The indexer read the order id back out of Postgres to derive each reservation's
+key, so every key matched nothing. Fifty-three reservations pointed at no
+contract record, the lifecycle worker's `releaseOrder` answered "nothing to
+release" every time and silently released nothing, and the domain stayed pinned
+at its ceiling with all three agents refused.
+
+One boundary, three failures, and every one of them quiet.
+
+What it did **not** touch is the point: the contract never reads a projection, so
+admission stayed correct throughout. The repair was to delete the rows, rewind
+the cursor and let the indexer rebuild them from chain logs — no state was
+reconstructed by hand.
+
+The fix is verified against the contract's own output. `ReservationReleased`
+emits the contract's `orderKey`; re-deriving it in TypeScript from the matching
+`IntentAdmitted` log reproduces it exactly.
 
 ---
 

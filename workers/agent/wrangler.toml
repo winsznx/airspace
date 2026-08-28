@@ -6,13 +6,16 @@
 # portfolio contract. That is what makes the shared-envelope claim testable.
 #
 # Secrets per environment (wrangler secret put --env <name>):
-#   AGENT_PRIVATE_KEY
+#   AGENT_PRIVATE_KEY   the agent's own key
+#   AGENT_TOKEN         optional, enables the manual /tick trigger
 
 name = "airspace-agent"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = false
+# The agents expose /health and /status only. /tick spends the agent's gas and
+# is gated behind AGENT_TOKEN; without that secret the route does not exist.
+workers_dev = true
 
 [[kv_namespaces]]
 binding = "AGENT_STATE"

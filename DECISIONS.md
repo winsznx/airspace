@@ -275,3 +275,31 @@ TypeScript. `Number` is used for a protocol quantity in exactly one place: never
 **Why.** A 1e18-scale value exceeds `Number.MAX_SAFE_INTEGER` by nine orders of
 magnitude. Formatting happens once, at the presentation edge, in
 `apps/web/src/lib/format.ts`. Everything upstream of that file is exact.
+
+**Where this rule was broken, and what it cost.** PostgREST serialises `numeric`
+as a JSON **number**, so the rule was violated at a boundary nobody wrote code
+for. DreamDEX order ids are ~21 digits:
+
+```
+on chain          239807672958224550581
+as a JSON number  239807672958224560000
+back to BigInt    239807672958224564224
+```
+
+The indexer wrote `IntentAdmitted` correctly, then read the order id back out of
+Postgres to derive the reservation's key — and every key derived that way was
+wrong. Fifty-three reservations pointed at nothing. The contract was right
+throughout; only the projection was lost, which is exactly the blast radius the
+architecture is supposed to keep it to.
+
+Two fixes, because one would have been a patch rather than a repair:
+
+1. The indexer keeps the admitted values **in memory** for the reconcile that
+   follows in the same transaction. Correct values never make the round trip.
+2. Every `numeric(78,0)` column is selected `::text`, so nothing large can cross
+   as a float again even where a round trip is unavoidable.
+
+The repair itself is the argument for the projection design: the reservation
+rows were deleted, the cursor rewound, and the indexer rebuilt them from chain
+logs. No state was reconstructed by hand, and nothing authoritative was ever at
+risk.

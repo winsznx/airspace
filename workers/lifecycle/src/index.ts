@@ -296,7 +296,10 @@ async function prunable(client: PublicClient, portfolio: Address, marketId: Mark
 // Job execution
 // ---------------------------------------------------------------------------
 
-async function runJob(env: Env, job: Job): Promise<{ done: boolean; note: string; txHash?: string }> {
+async function runJob(
+  env: Env,
+  job: Job,
+): Promise<{ done: boolean; note: string; txHash?: string; suspect?: boolean }> {
   const k = keeper(env);
   if (!k) return { done: false, note: "no keeper key configured; job planned but not sent" };
 
@@ -328,6 +331,20 @@ async function runJob(env: Env, job: Job): Promise<{ done: boolean; note: string
     return { done: true, note: `${fn.name} sent`, txHash };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+
+    // `NothingToRelease` on an order the projection still shows as open is not
+    // a completed release: it means the contract has no record under this key,
+    // so the KEY is wrong and the projection is lying about a live reservation.
+    //
+    // This is not hypothetical. Reservation keys derived from an order id that
+    // had been round-tripped through PostgREST's JSON number lost precision, and
+    // every release silently reported "nothing to release" while the domain sat
+    // pinned at its ceiling. Treating that as success is what made the failure
+    // silent, so it is now flagged for reconciliation instead.
+    if (job.kind === "release-order" && /NothingToRelease|NotTracked/.test(msg)) {
+      return { done: true, note: "no contract record under this order key: projection needs rebuilding", suspect: true };
+    }
+
     // A deterministic revert means the work is not applicable yet or is already
     // done. Both are terminal for this job; retrying would waste gas.
     if (/OrderStillLive|NothingToRelease|MarketNotSettled|MarketStillActive|NotTracked/.test(msg)) {
@@ -369,6 +386,15 @@ export default {
           .eq("order_key", job.orderKey ?? null)
           .eq("market_id", job.marketId ?? null)
           .in("status", ["PENDING", "RUNNING"]);
+
+        // A suspect release leaves the reservation visibly broken rather than
+        // quietly gone, so an operator can see there is a projection to rebuild.
+        if (result.suspect && job.orderKey) {
+          await db
+            .from("reservations")
+            .update({ state: "NEEDS_RECONCILIATION", updated_at: new Date().toISOString() })
+            .eq("order_key", job.orderKey);
+        }
 
         console.log(JSON.stringify({ at: "job", kind: job.kind, ...result }));
         msg.ack();

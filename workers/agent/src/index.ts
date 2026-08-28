@@ -31,6 +31,8 @@ export interface Env {
   AGENT_CADENCE?: string;
   /** Base URL of the AIRSPACE API, used only to report refusals. */
   AIRSPACE_API?: string;
+  /** SECRET. Gates the manual /tick trigger, which spends the agent's gas. */
+  AGENT_TOKEN?: string;
 
   /** SECRET. The agent's own key. Never leaves this Worker. */
   AGENT_PRIVATE_KEY: string;
@@ -39,17 +41,34 @@ export interface Env {
   AGENT_STATE: KVNamespace;
 }
 
+/** Where the last tick result is kept, so an operator can see what happened. */
+const LAST_TICK = "last-tick";
+
+async function runAndRecord(env: Env): Promise<TickReport | { error: string }> {
+  const at = new Date().toISOString();
+  try {
+    const report = await tick(env);
+    await env.AGENT_STATE.put(LAST_TICK, JSON.stringify({ at, ...report }), { expirationTtl: 86_400 });
+    console.log("tick", JSON.stringify(report));
+    return report;
+  } catch (e) {
+    const error = e instanceof Error ? e.message.slice(0, 400) : String(e);
+    // A thrown tick is the one outcome that leaves no trace anywhere else, so
+    // it is recorded before it is re-reported.
+    await env.AGENT_STATE.put(LAST_TICK, JSON.stringify({ at, outcome: "threw", error }), { expirationTtl: 86_400 });
+    console.error("tick failed", error);
+    return { error };
+  }
+}
+
 export default {
   async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      tick(env)
-        .then((r) => console.log("tick", JSON.stringify(r)))
-        .catch((e) => console.error("tick failed", e instanceof Error ? e.message : String(e))),
-    );
+    ctx.waitUntil(runAndRecord(env).then(() => undefined));
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
     if (url.pathname === "/health") {
       return Response.json({
         ok: true,
@@ -58,9 +77,29 @@ export default {
         portfolio: env.AIRSPACE_PORTFOLIO,
       });
     }
-    if (url.pathname === "/tick" && req.method === "POST") {
-      return Response.json(await tick(env));
+
+    // Read-only: what the last scheduled run decided. Safe to expose, and the
+    // only way to tell "no signal" apart from "not running" without a log tail.
+    if (url.pathname === "/status") {
+      const last = await env.AGENT_STATE.get(LAST_TICK);
+      return Response.json({
+        strategy: env.AGENT_STRATEGY,
+        agent: account(env).address,
+        portfolio: env.AIRSPACE_PORTFOLIO,
+        lastTick: last ? (JSON.parse(last) as unknown) : null,
+      });
     }
+
+    // Spends the agent's gas, so it is gated. Without a configured token the
+    // route does not exist rather than being open.
+    if (url.pathname === "/tick" && req.method === "POST") {
+      if (!env.AGENT_TOKEN) return Response.json({ error: "NOT_ENABLED" }, { status: 404 });
+      if (req.headers.get("authorization") !== `Bearer ${env.AGENT_TOKEN}`) {
+        return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+      }
+      return Response.json(await runAndRecord(env));
+    }
+
     return Response.json({ error: "not found" }, { status: 404 });
   },
 };
