@@ -93,11 +93,7 @@ contract AirspacePortfolioFactory {
 
     function _predict(bytes32 salt) internal view returns (address) {
         return address(
-            uint160(
-                uint256(
-                    keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(_creationCode())))
-                )
-            )
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(_creationCode())))))
         );
     }
 

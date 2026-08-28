@@ -10,7 +10,14 @@ import {
     IERC20Minimal
 } from "./interfaces/IDreamDex.sol";
 import {
-    GlobalPolicy, DomainPolicy, AgentPolicy, Intent, Refusal, Evaluation, AdmissionView, Gate
+    GlobalPolicy,
+    DomainPolicy,
+    AgentPolicy,
+    Intent,
+    Refusal,
+    Evaluation,
+    AdmissionView,
+    Gate
 } from "./interfaces/IAirspace.sol";
 import {Cadence} from "./libraries/Cadence.sol";
 
@@ -366,9 +373,8 @@ contract AirspacePortfolio {
     function fund(uint256 amount) external {
         address t = collateralToken;
         if (t == address(0)) revert ZeroAddress();
-        (bool ok, bytes memory ret) = t.call(
-            abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, address(this), amount)
-        );
+        (bool ok, bytes memory ret) =
+            t.call(abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, address(this), amount));
         if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TransferFailed();
         capitalBase += uint128(amount);
         emit Funded(msg.sender, amount, capitalBase);
@@ -415,11 +421,7 @@ contract AirspacePortfolio {
     /// @dev Grants the owner no privilege they do not already hold — they own every
     ///      asset here — so that recovery never depends on this contract having
     ///      anticipated a protocol upgrade.
-    function ownerCall(address target, uint256 value, bytes calldata data)
-        external
-        onlyOwner
-        returns (bytes memory)
-    {
+    function ownerCall(address target, uint256 value, bytes calldata data) external onlyOwner returns (bytes memory) {
         (bool ok, bytes memory ret) = target.call{value: value}(data);
         if (!ok) {
             assembly ("memory-safe") {
@@ -531,7 +533,9 @@ contract AirspacePortfolio {
         if (isBuy) {
             if (i.price > ap.maxBuyPrice || i.price > gp.maxBuyPrice) return _refuse(e, Refusal.PRICE_OUTSIDE_POLICY);
         } else {
-            if (i.price < ap.minSellPrice || i.price < gp.minSellPrice) return _refuse(e, Refusal.PRICE_OUTSIDE_POLICY);
+            if (i.price < ap.minSellPrice || i.price < gp.minSellPrice) {
+                return _refuse(e, Refusal.PRICE_OUTSIDE_POLICY);
+            }
         }
         e.gates |= Gate.PRICE;
 
@@ -685,7 +689,16 @@ contract AirspacePortfolio {
         (orderId, c) = _place(i, e);
 
         emit IntentAdmitted(
-            ih, i.marketId, msg.sender, e.domain, e.pool, i.marketNonce, i.kind, i.price, i.quantity, orderId,
+            ih,
+            i.marketId,
+            msg.sender,
+            e.domain,
+            e.pool,
+            i.marketNonce,
+            i.kind,
+            i.price,
+            i.quantity,
+            orderId,
             i.strategyVersion
         );
 
@@ -741,9 +754,8 @@ contract AirspacePortfolio {
         }
 
         bool ok;
-        (ok, orderId) = IBinaryPool(i.pool).placeBinaryOrder(
-            i.kind, i.price, i.quantity, i.expireTimestampNs, i.orderType, 0, address(0), 0, i.nonce
-        );
+        (ok, orderId) = IBinaryPool(i.pool)
+            .placeBinaryOrder(i.kind, i.price, i.quantity, i.expireTimestampNs, i.orderType, 0, address(0), 0, i.nonce);
         if (!ok) revert PlacementFailed();
 
         if (isBuy) IERC20Minimal(collateralToken).approve(i.pool, 0);
@@ -774,9 +786,7 @@ contract AirspacePortfolio {
         // MEASURED: the outcome-token delta IS the filled quantity.
         uint128 filled;
         {
-            uint128 after_ = uint128(
-                outcomeToken.balanceOf(address(this), isYes ? e.yesId : e.yesId + 1)
-            );
+            uint128 after_ = uint128(outcomeToken.balanceOf(address(this), isYes ? e.yesId : e.yesId + 1));
             uint128 before_ = isYes ? c.yesBefore : c.noBefore;
             filled = isBuy ? (after_ - before_) : (before_ - after_);
         }
@@ -862,8 +872,7 @@ contract AirspacePortfolio {
         OrderRec storage o = orderRec[key];
         if (o.qtyOpen == 0) revert NothingToRelease();
 
-        uint128 stillOpen =
-            IBinaryPool(o.pool).marketNonce() != o.marketNonce ? 0 : _liveRemaining(o.pool, o.orderId);
+        uint128 stillOpen = IBinaryPool(o.pool).marketNonce() != o.marketNonce ? 0 : _liveRemaining(o.pool, o.orderId);
         if (stillOpen >= o.qtyOpen) revert OrderStillLive();
 
         uint128 released = o.qtyOpen - stillOpen;

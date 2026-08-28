@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Public endpoints. No credential in this file, and none needed by any job here.
+  SHANNON_RPC: https://dream-rpc.somnia.network
+  SHANNON_RPC_FALLBACK: https://rpc.ankr.com/somnia_testnet
+
+jobs:
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scan needs history to check every blob ever committed, not just
+          # the tip. A leak that was removed in a later commit is still a leak.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/secret-scan.mjs --history
+
+  contracts:
+    name: contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: forge fmt
+        run: forge fmt --check --root contracts
+
+      - name: forge build
+        run: forge build --root contracts
+
+      - name: EIP-170 headroom
+        run: |
+          forge build --sizes --root contracts | tee sizes.txt
+          # The deployed contract is 887 bytes under the limit. A change that
+          # spends that silently is a change that cannot be deployed.
+          if grep -qE '\| *AirspacePortfolio *\|' sizes.txt; then
+            margin=$(grep -E '\| *AirspacePortfolio *\|' sizes.txt | awk -F'|' '{gsub(/[ ,]/,"",$5); print $5}')
+            echo "runtime margin: ${margin} bytes"
+            if [ "${margin}" -le 0 ]; then echo "AirspacePortfolio exceeds EIP-170"; exit 1; fi
+          else
+            echo "could not find AirspacePortfolio in the size report"; exit 1
+          fi
+
+      - name: unit, fuzz and invariant tests
+        run: forge test --root contracts --no-match-path '*fork*' -vv
+
+  fork:
+    name: contracts (live Shannon fork)
+    runs-on: ubuntu-latest
+    # A public RPC can be down or rate-limited, and that is not this repository
+    # being broken. The job runs and reports; it does not gate a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+
+      - name: pin a live market pair
+        run: node scripts/refresh-fork-env.mjs
+
+      - name: fork tests
+        run: pnpm -C contracts test:fork
+
+  typescript:
+    name: typescript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: ABI is in sync with the contracts
+        run: pnpm abi:check
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: web bundle budget
+        run: |
+          # Each chunk must stay under Vite's 500 kB warning threshold. A single
+          # blob would mean the chain stack is no longer split out.
+          over=$(find apps/web/dist/assets -name '*.js' -size +500k | grep -v '\.map$' || true)
+          if [ -n "$over" ]; then echo "chunk over 500 kB:"; echo "$over"; exit 1; fi
+          ls -la apps/web/dist/assets/*.js | grep -v '\.map'
+
+  clean-room:
+    name: clean clone reproduces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: clone from the checkout, tracked files only
+        run: |
+          git -C source config --global --add safe.directory '*'
+          git clone --depth 1 "file://$PWD/source" fresh
+          cd fresh
+          # Nothing gitignored may be required to build. If a secret or a local
+          # artifact is load-bearing, this is where it shows up.
+          test ! -e .env.local
+          test ! -e .wallets.json
+          test ! -e node_modules
+
+      - name: install and verify with no credentials at all
+        working-directory: fresh
+        run: |
+          pnpm install --frozen-lockfile
+          forge install
+          pnpm typecheck
+          pnpm test
+          forge test --root contracts --no-match-path '*fork*'
+          pnpm build
+          node scripts/secret-scan.mjs

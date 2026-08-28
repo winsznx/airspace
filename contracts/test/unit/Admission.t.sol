@@ -3,8 +3,15 @@ pragma solidity ^0.8.28;
 
 import {AirspaceBase} from "../AirspaceBase.t.sol";
 import {AirspacePortfolio} from "../../src/AirspacePortfolio.sol";
-import {AgentPolicy, DomainPolicy, GlobalPolicy, Intent, Refusal, AdmissionView, Gate} from
-    "../../src/interfaces/IAirspace.sol";
+import {
+    AgentPolicy,
+    DomainPolicy,
+    GlobalPolicy,
+    Intent,
+    Refusal,
+    AdmissionView,
+    Gate
+} from "../../src/interfaces/IAirspace.sol";
 import {console2} from "forge-std/Test.sol";
 import {MockPool} from "../mocks/MockDreamDex.sol";
 

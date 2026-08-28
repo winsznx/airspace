@@ -4,8 +4,15 @@ pragma solidity ^0.8.28;
 import {Test, console2} from "forge-std/Test.sol";
 import {AirspacePortfolio} from "../../src/AirspacePortfolio.sol";
 import {AirspacePortfolioFactory} from "../../src/AirspacePortfolioFactory.sol";
-import {GlobalPolicy, DomainPolicy, AgentPolicy, Intent, Refusal, AdmissionView, Gate} from
-    "../../src/interfaces/IAirspace.sol";
+import {
+    GlobalPolicy,
+    DomainPolicy,
+    AgentPolicy,
+    Intent,
+    Refusal,
+    AdmissionView,
+    Gate
+} from "../../src/interfaces/IAirspace.sol";
 import {IBinaryMarketsModule, IBinaryPool, IOutcomeToken6909, IERC20Minimal} from "../../src/interfaces/IDreamDex.sol";
 
 interface ITestUsdc is IERC20Minimal {
@@ -125,12 +132,7 @@ contract ShannonForkTest is Test {
     }
 
     function _dom(uint128 cap) internal pure returns (DomainPolicy memory) {
-        return DomainPolicy({
-            configured: true,
-            maxDomainRiskUsage: cap,
-            maxDomainCommitted: 0,
-            maxLiveMarkets: 0
-        });
+        return DomainPolicy({configured: true, maxDomainRiskUsage: cap, maxDomainCommitted: 0, maxLiveMarkets: 0});
     }
 
     function _agent() internal pure returns (AgentPolicy memory) {
@@ -297,13 +299,21 @@ contract ShannonForkTest is Test {
         IPoolExtra(m1.pool).mintSet(whale, whale, 100 * K);
         IOutcomeToken6909(OUTCOME).setOperator(m1.pool, true);
         Intent memory shape = _restTop(m1, qty, 99);
-        (bool ok,) = m1.pool.call(
-            abi.encodeWithSignature(
-                "placeBinaryOrder(uint8,uint256,uint256,uint64,uint8,uint8,address,uint96,uint64)",
-                uint8(1), shape.price, uint256(qty), shape.expireTimestampNs, uint8(2), uint8(0), address(0),
-                uint96(0), uint64(0)
-            )
-        );
+        (bool ok,) = m1.pool
+            .call(
+                abi.encodeWithSignature(
+                    "placeBinaryOrder(uint8,uint256,uint256,uint64,uint8,uint8,address,uint96,uint64)",
+                    uint8(1),
+                    shape.price,
+                    uint256(qty),
+                    shape.expireTimestampNs,
+                    uint8(2),
+                    uint8(0),
+                    address(0),
+                    uint96(0),
+                    uint64(0)
+                )
+            );
         vm.stopPrank();
         if (!ok) {
             console2.log("external cross did not execute at this block; skipping");

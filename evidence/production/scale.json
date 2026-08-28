@@ -1,0 +1,53 @@
+{
+  "ranAt": "2026-08-28T11:33:56.417Z",
+  "note": "Synthetic projections on a non-existent chain id, loaded and then deleted. On-chain scale is measured for real in contracts/test/unit/Scale.t.sol.",
+  "syntheticChainId": 999999,
+  "loaded": {
+    "portfolios": 100,
+    "agents": 1000,
+    "intents": 10000,
+    "receipts": 10000,
+    "loadMs": 86949
+  },
+  "hotPortfolioIntents": 1000,
+  "measurements": {
+    "intents page 1": {
+      "p50": 819,
+      "p95": 1441,
+      "rows": 25,
+      "total": 1000
+    },
+    "intents last page": {
+      "p50": 786,
+      "p95": 1247,
+      "rows": 25,
+      "total": 1000
+    },
+    "intents filtered REFUSED": {
+      "p50": 823,
+      "p95": 978,
+      "rows": 25,
+      "total": 334
+    },
+    "intents filtered by agent": {
+      "p50": 788,
+      "p95": 1200,
+      "rows": 10,
+      "total": 10
+    },
+    "receipts page 1": {
+      "p50": 812,
+      "p95": 929,
+      "rows": 25,
+      "total": 1000
+    },
+    "owner portfolio list": {
+      "p50": 571,
+      "p95": 1260,
+      "rows": 0,
+      "total": null
+    }
+  },
+  "deepPageRatio": 0.87,
+  "verdict": "PASS"
+}

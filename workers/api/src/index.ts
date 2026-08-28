@@ -4,7 +4,16 @@ import type { Address, DomainId, MarketId } from "@airspace/types";
 import { Refusal, REFUSAL_COPY, REFUSAL_NAME } from "@airspace/types";
 import { explainAdmission } from "@airspace/risk";
 import { airspacePortfolioAbi, airspacePortfolioFactoryAbi } from "@airspace/sdk";
-import { canonicalCadence, discoverMarkets, readLiveState, readMarket, domainKey } from "@airspace/protocol";
+import {
+  canonicalCadence,
+  discoverMarkets,
+  domainKey,
+  intentHash,
+  readLiveState,
+  readMarket,
+  type IntentStruct,
+} from "@airspace/protocol";
+import { BaseError, ContractFunctionRevertedError, decodeFunctionData, toFunctionSelector } from "viem";
 import { createServiceDb, createPublicDb, toBigInt } from "@airspace/db";
 import type { Env } from "./env.js";
 import { chainId, factoryAddress } from "./env.js";
@@ -362,6 +371,222 @@ app.post("/api/intents/simulate", async (c) => {
     }),
   );
 });
+
+// ---------------------------------------------------------------------------
+// Refusal recovery
+// ---------------------------------------------------------------------------
+
+/**
+ * Recover a refusal from a failed transaction.
+ *
+ * A refusal REVERTS, and a reverted transaction's logs are discarded, so the
+ * contract's `IntentRefused` event can never be observed. (That event is
+ * unreachable in the deployed bytecode; see DECISIONS.md. It is emitted on the
+ * line before `revert Refused(code)`.) The refusal is still fully on chain: it
+ * is in the failed transaction itself.
+ *
+ * So this endpoint takes only a transaction hash and derives everything else:
+ *
+ *   1. the receipt must be `reverted` and addressed to this portfolio;
+ *   2. the calldata must decode as `execute(Intent)`;
+ *   3. replaying that exact call at the transaction's own block must return
+ *      `Refused(code)`.
+ *
+ * Nothing the caller says is trusted beyond which transaction to look at, so
+ * the resulting row carries `contract` provenance honestly. Somnia's public RPC
+ * serves this replay; it is verified in the live proof.
+ */
+app.post("/api/intents/report", async (c) => {
+  const body = await c.req.json<{ portfolio: string; txHash: string }>();
+  if (!isAddress(body.portfolio)) return bad(c, "invalid portfolio address");
+  if (!isBytes32(body.txHash)) return bad(c, "invalid txHash");
+
+  const client = publicClient(c.env);
+  const cid = chainId(c.env);
+  const portfolio = body.portfolio.toLowerCase() as Address;
+
+  const receipt = await client.getTransactionReceipt({ hash: body.txHash }).catch(() => null);
+  if (!receipt) return c.json({ error: "TX_NOT_FOUND" }, 404);
+  if (receipt.to?.toLowerCase() !== portfolio) return bad(c, "transaction was not sent to this portfolio");
+  if (receipt.status !== "reverted") return bad(c, "transaction did not revert: an admitted intent is indexed from its logs");
+
+  const txn = await client.getTransaction({ hash: body.txHash });
+
+  let intent: IntentStruct;
+  try {
+    const { functionName, args } = decodeFunctionData({ abi: airspacePortfolioAbi, data: txn.input });
+    if (functionName !== "execute") return bad(c, "transaction did not call execute");
+    intent = (args as readonly [IntentStruct])[0];
+  } catch {
+    return bad(c, "calldata did not decode as execute(Intent)");
+  }
+
+  // Replay the exact call at the block it failed in. The revert data is the
+  // contract's own answer, not a reconstruction of it.
+  let refusal: number | null = null;
+  try {
+    await client.call({
+      account: txn.from,
+      to: portfolio,
+      data: txn.input,
+      blockNumber: receipt.blockNumber,
+    });
+  } catch (err) {
+    refusal = decodeRefusal(err);
+  }
+  if (refusal === null) return bad(c, "transaction did not revert with Refused(code)");
+
+  const hash = intentHash(portfolio, cid, txn.from.toLowerCase() as Address, intent);
+  const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+  const portfolioId = await ensurePortfolioRow(c.env, db, client, portfolio);
+  if (!portfolioId) return c.json({ error: "NOT_AN_AIRSPACE_PORTFOLIO" }, 404);
+
+  const domain = (await client
+    .readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "domainOf", args: [intent.marketId] })
+    .catch(() => null)) as DomainId | null;
+
+  const common = {
+    portfolio_id: portfolioId,
+    intent_hash: hash,
+    agent_address: txn.from.toLowerCase(),
+    market_id: intent.marketId,
+    tx_hash: body.txHash,
+    block_number: Number(receipt.blockNumber),
+  };
+
+  await db.from("intents").upsert(
+    {
+      ...common,
+      market_nonce: Number(intent.marketNonce),
+      pool_address: intent.pool.toLowerCase(),
+      domain_hash: domain,
+      kind: Number(intent.kind),
+      order_type: Number(intent.orderType),
+      price: intent.price.toString(),
+      quantity: intent.quantity.toString(),
+      agent_nonce: Number(intent.nonce),
+      status: "REFUSED",
+      refusal_code: refusal,
+      strategy_version: intent.strategyVersion,
+      log_index: 0,
+    },
+    { onConflict: "portfolio_id,intent_hash" },
+  );
+
+  await db.from("receipts").upsert(
+    {
+      ...common,
+      decision: "REFUSED",
+      refusal_code: refusal,
+      domain_hash: domain,
+      // Every field was decoded from the transaction or returned by replaying
+      // it. None was witnessed by a worker and none was supplied by a client.
+      provenance: {
+        decision: "contract",
+        refusal_code: "contract",
+        market_id: "contract",
+        agent_address: "contract",
+      },
+    },
+    { onConflict: "portfolio_id,intent_hash" },
+  );
+
+  return c.json({
+    recorded: true,
+    intentHash: hash,
+    refusal,
+    refusalName: REFUSAL_NAME[refusal] ?? null,
+    copy: REFUSAL_COPY[refusal] ?? null,
+  });
+});
+
+/**
+ * The portfolio's row, creating it from chain state if the indexer has not
+ * reached it yet.
+ *
+ * A refusal exists only as a failed transaction, so it is not replayable from
+ * logs: if this endpoint rejected the report because the indexer was a minute
+ * behind, that refusal would be lost for good. Admission is decided by the
+ * factory, not by the caller — `isPortfolio` is the same check the rest of the
+ * system uses, and owner and collateral are read from the portfolio itself.
+ */
+async function ensurePortfolioRow(
+  env: Env,
+  db: ReturnType<typeof createServiceDb>,
+  client: ReturnType<typeof publicClient>,
+  portfolio: Address,
+): Promise<string | null> {
+  const cid = chainId(env);
+  const { data: existing } = await db
+    .from("portfolios")
+    .select("id")
+    .eq("chain_id", cid)
+    .eq("portfolio_address", portfolio)
+    .maybeSingle();
+  if (existing) return existing.id as string;
+
+  const factory = factoryAddress(env);
+  const isPortfolio = (await client.readContract({
+    address: factory,
+    abi: airspacePortfolioFactoryAbi,
+    functionName: "isPortfolio",
+    args: [portfolio],
+  })) as boolean;
+  if (!isPortfolio) return null;
+
+  const [owner, collateral, version] = await Promise.all([
+    client.readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "owner" }) as Promise<Address>,
+    client.readContract({
+      address: portfolio,
+      abi: airspacePortfolioAbi,
+      functionName: "collateralToken",
+    }) as Promise<Address>,
+    client.readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "VERSION" }) as Promise<string>,
+  ]);
+
+  const { data } = await db
+    .from("portfolios")
+    .upsert(
+      {
+        chain_id: cid,
+        portfolio_address: portfolio,
+        owner_address: owner.toLowerCase(),
+        factory_address: factory,
+        implementation_version: version,
+        collateral_address: collateral.toLowerCase(),
+      },
+      { onConflict: "chain_id,portfolio_address" },
+    )
+    .select("id")
+    .maybeSingle();
+
+  return (data?.id as string) ?? null;
+}
+
+const REFUSED_SELECTOR = toFunctionSelector("Refused(uint8)");
+
+/**
+ * Pull `Refused(uint8)` out of a viem call error, or null if it is not one.
+ *
+ * `client.call` is given no ABI, so viem cannot name the error for us. The raw
+ * revert data is carried on some link of the error's cause chain; the selector
+ * is what identifies it, and the single uint8 argument is the code.
+ */
+function decodeRefusal(err: unknown): number | null {
+  if (err instanceof BaseError) {
+    const named = err.walk((e) => e instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
+    if (named?.data?.errorName === "Refused") return Number(named.data.args?.[0] ?? 0) || null;
+  }
+
+  for (let e: unknown = err, depth = 0; e && depth < 8; depth += 1) {
+    const raw = (e as { data?: unknown }).data;
+    if (typeof raw === "string" && raw.startsWith(REFUSED_SELECTOR) && raw.length === 74) {
+      return Number(BigInt(`0x${raw.slice(10)}`)) || null;
+    }
+    e = (e as { cause?: unknown }).cause;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Receipts, intents, reservations, positions — paginated projections

@@ -4,10 +4,23 @@ packages:
   - "workers/*"
 
 # esbuild and workerd ship prebuilt binaries and need their install scripts.
+#
+# The three declined below are optional native accelerators pulled in
+# transitively by wagmi's wallet connectors. Each has a pure-JS fallback, none
+# is reachable from the connectors this app instantiates, and declining them
+# keeps `pnpm install` reproducible on a machine with no C toolchain.
 allowBuilds:
+  bufferutil: false
   esbuild: true
+  keccak: false
+  utf-8-validate: false
   workerd: true
 
 onlyBuiltDependencies:
   - esbuild
   - workerd
+
+ignoredBuiltDependencies:
+  - bufferutil
+  - keccak
+  - utf-8-validate

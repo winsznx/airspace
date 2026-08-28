@@ -1,0 +1,27 @@
+{
+  "name": "@airspace/agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:momentum": "wrangler deploy --env momentum",
+    "deploy:reversion": "wrangler deploy --env reversion",
+    "deploy:spread": "wrangler deploy --env spread",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@airspace/protocol": "workspace:*",
+    "@airspace/risk": "workspace:*",
+    "@airspace/sdk": "workspace:*",
+    "@airspace/types": "workspace:*",
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "vitest": "^2.1.8",
+    "wrangler": "^4.119.0"
+  }
+}

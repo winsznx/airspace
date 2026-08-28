@@ -1,0 +1,31 @@
+round   1  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   2  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   3  momentum:no-market  reversion:no-market  spread:no-market
+round   4  momentum:no-market  reversion:no-market  spread:no-market
+round   5  momentum:no-market  reversion:no-market  spread:no-market
+round   6  momentum:no-market  reversion:no-market  spread:no-market
+round   7  momentum:no-signal  reversion:submitted(0x766b7d36c4)  spread:submitted(0xeb017b69c7)
+round   8  momentum:submitted(0xd225ac918b)  reversion:submitted(0xcaa99b9fc8)  spread:submitted(0xb145c3b59d)
+round   9  momentum:submitted(0x464983b5ea)  reversion:refused-onchain(0x868a35a642)  spread:refused-onchain(0xf923efd9e9)
+round  10  momentum:submitted(0xfdc3606012)  reversion:refused-onchain(0x6adb0075b7)  spread:submitted(0x9a0ddd9595)
+round  11  momentum:submitted(0xd0f4f56603)  reversion:submitted(0xdf8942a9c2)  spread:submitted(0x5c34800607)
+round  12  momentum:submitted(0xc74c77869e)  reversion:submitted(0x349bc86978)  spread:submitted(0x241cbe97d4)
+round  13  momentum:submitted(0x6fe157e763)  reversion:submitted(0x6f21d75c0f)  spread:submitted(0xdf75b18b9e)
+round  14  momentum:submitted(0x106dc6b0c4)  reversion:submitted(0x1cfaeee30d)  spread:submitted(0xcd5de247e7)
+round  15  momentum:submitted(0x7ee7c72861)  reversion:submitted(0x7f59d1d86f)  spread:submitted(0x0c781198f6)
+round  16  momentum:submitted(0xdd11df9601)  reversion:submitted(0xdbcb9303d6)  spread:submitted(0x9190c28ff0)
+round  17  momentum:submitted(0x5314a28bf2)  reversion:submitted(0xfc8a119b68)  spread:submitted(0x0c6f4b18d2)
+round  18  momentum:submitted(0xe558971ea4)  reversion:submitted(0x772763f18b)  spread:submitted(0x4e5235795d)
+round  19  momentum:submitted(0xfb1d27acd0)  reversion:refused-preflight(PRICE_OUTSIDE_POLICY)  spread:submitted(0x2f4edce935)
+round  20  momentum:submitted(0xa6c551c547)  reversion:no-signal  spread:submitted(0x9fc90e35d7)
+round  21  momentum:refused-preflight(PRICE_OUTSIDE_POLICY)  reversion:refused-preflight(PRICE_OUTSIDE_POLICY)  spread:submitted(0xe797e81985)
+round  22  momentum:submitted(0xc7e032710a)  reversion:refused-preflight(PRICE_OUTSIDE_POLICY)  spread:submitted(0xf501971a10)
+round  23  momentum:submitted(0x16573417ea)  reversion:no-signal  spread:submitted(0x679262fc8d)
+round  24  momentum:no-signal  reversion:no-signal  spread:submitted(0xaa75bc668e)
+round  25  momentum:no-signal  reversion:no-signal  spread:no-signal
+
+outcomes: {"no-signal":14,"no-market":12,"submitted":42,"refused-onchain":3,"refused-preflight":4}
+submitted: 42
+refused on chain: 3
+refused preflight: 4
+wrote evidence/production/campaign-run.json

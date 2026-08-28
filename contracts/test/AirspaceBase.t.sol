@@ -4,8 +4,15 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {AirspacePortfolio} from "../src/AirspacePortfolio.sol";
 import {AirspacePortfolioFactory} from "../src/AirspacePortfolioFactory.sol";
-import {GlobalPolicy, DomainPolicy, AgentPolicy, Intent, Refusal, AdmissionView, Gate} from
-    "../src/interfaces/IAirspace.sol";
+import {
+    GlobalPolicy,
+    DomainPolicy,
+    AgentPolicy,
+    Intent,
+    Refusal,
+    AdmissionView,
+    Gate
+} from "../src/interfaces/IAirspace.sol";
 import {MockERC20, MockOutcome6909, MockModule, MockPool, MockMarket} from "./mocks/MockDreamDex.sol";
 
 /// @notice Shared fixture: a funded portfolio, three independent agents and a
@@ -40,7 +47,8 @@ abstract contract AirspaceBase is Test {
         tok = new MockERC20();
         oc = new MockOutcome6909();
         mod = new MockModule();
-        factory = new AirspacePortfolioFactory(address(new AirspacePortfolio()), address(mod), address(oc), address(tok));
+        factory =
+            new AirspacePortfolioFactory(address(new AirspacePortfolio()), address(mod), address(oc), address(tok));
 
         vm.prank(owner);
         pf = AirspacePortfolio(payable(factory.createPortfolio(owner, bytes32(0))));
@@ -82,12 +90,7 @@ abstract contract AirspaceBase is Test {
     }
 
     function _domainPolicy(uint128 ceiling) internal pure returns (DomainPolicy memory) {
-        return DomainPolicy({
-            configured: true,
-            maxDomainRiskUsage: ceiling,
-            maxDomainCommitted: 0,
-            maxLiveMarkets: 0
-        });
+        return DomainPolicy({configured: true, maxDomainRiskUsage: ceiling, maxDomainCommitted: 0, maxLiveMarkets: 0});
     }
 
     /// @dev Deliberately generous: every agent's OWN policy admits every order in

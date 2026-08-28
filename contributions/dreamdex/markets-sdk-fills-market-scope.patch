@@ -1,0 +1,83 @@
+Subject: [PATCH] fills: allow server-side marketId scoping
+
+`getFills` / `getUserFills` / `countUserFills` scope by pool address, and
+`limit` is applied to that pool-scoped result. On event contracts a binary pool
+is recycled across successive markets, so one pool address carries the tape of
+every market that has ever run on it — which `FillRow.market`'s own docs already
+warn about ("Group and label by this, never by `pool` alone").
+
+With no market field on `FillsOptions` there is no way to act on that warning
+before the limit bites. Measured on testnet 2026-08-28, one 50-row page from
+pool 0xc09e4a5bdee2899962727125fb5eaeb896798e46 spanned thirteen market
+generations; at limit 5 on another recycled pool, a market returned 4 of its 5
+fills with nothing in the response to say rows were dropped.
+
+`market_id` is already selected by `FillQueryFields` and accepted by
+`Fill_bool_exp`, so this is one optional field and one `where` clause. The
+change is additive: existing calls are unaffected.
+
+Reproduction: https://github.com/<AIRSPACE>/contributions/dreamdex/reproduce-fill-scoping.mjs
+(no SDK install, no credentials — posts the same `where` shape to the same
+public endpoint).
+
+NOTE: `somnia-chain/somnia-markets` was not publicly readable at the time of
+writing, so this diff is written against the shape of the published build
+(`@somnia-chain/markets-sdk@0.28.1`, `dist/fills.js` / `dist/fills.d.ts`).
+Line numbers will not apply cleanly; the change itself is three lines.
+
+---
+ packages/sdk/src/fills.ts | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/packages/sdk/src/fills.ts b/packages/sdk/src/fills.ts
+--- a/packages/sdk/src/fills.ts
++++ b/packages/sdk/src/fills.ts
+@@ -1,4 +1,4 @@
+-/** Options for {@link SomniaMarketsClient.getFills} / {@link SomniaMarketsClient.getUserFills}. All optional. */
++/** Options for {@link SomniaMarketsClient.getFills} / {@link SomniaMarketsClient.getUserFills}. All optional. */
+ export type FillsOptions = {
+   /** Max rows (default 50). */
+   limit?: number;
+@@ -8,6 +8,17 @@ export type FillsOptions = {
+   since?: number;
+   /** Only fills at/before this unix-seconds timestamp. */
+   until?: number;
++  /**
++   *  Scope to one market's bytes32 marketId, applied SERVER-SIDE so `limit`
++   *  counts rows in THIS market.
++   *
++   *  Required for a correct per-market tape on binary: a pool is recycled
++   *  across successive markets, so `pool` alone selects every market that has
++   *  ever run on it and the limit truncates across generations. On SPOT/PERP
++   *  the pool address is the market id, so this is equivalent to `pool`.
++   *
++   *  See {@link FillRow.market}.
++   */
++  market?: string;
+ };
+
+ export async function getFills(
+@@ -16,6 +27,7 @@ export async function getFills(
+   indexerUrl: string,
+ ): Promise<FillRow[]> {
+   const where = applyFillWindow({ pool: { _eq: pool.toLowerCase() } }, opts);
++  if (opts.market != null) where.market_id = { _eq: opts.market };
+   const data = await IndexerRead.gqlRequest(
+     FillsQuery,
+     { where, limit: opts.limit ?? 50, offset: opts.offset ?? 0 },
+@@ -31,6 +43,7 @@ export async function getUserFills(
+   const acct = account.toLowerCase();
+   const where: Fill_Bool_Exp = { _or: participatedAs(acct) };
+   if (opts.pool != null) where.pool = { _eq: opts.pool.toLowerCase() };
++  if (opts.market != null) where.market_id = { _eq: opts.market };
+   applyFillWindow(where, opts);
+   const data = await IndexerRead.gqlRequest(
+     UserFillsQuery,
+@@ -46,6 +59,7 @@ export async function countUserFills(
+   const acct = account.toLowerCase();
+   const where: Fill_Bool_Exp = { _or: participatedAs(acct) };
+   if (opts.pool != null) where.pool = { _eq: opts.pool.toLowerCase() };
++  if (opts.market != null) where.market_id = { _eq: opts.market };
+   applyFillWindow(where, opts);
+   return IndexerRead.aggregateCount("Fill", "Fill_bool_exp", where, indexerUrl, headers);
+ }

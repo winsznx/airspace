@@ -1,0 +1,271 @@
+From 621c0821513976dcf1c929c8c8f90356b8795156 Mon Sep 17 00:00:00 2001
+From: winsznx <timjosh507@gmail.com>
+Date: Fri, 28 Aug 2026 11:58:19 +0100
+Subject: [PATCH] ec-core: market-scoped fill queries
+
+A binary pool is recycled across successive markets, so one pool address
+carries the tape of every market that has ever run on it. The SDK's own
+FillRow.market docs say to group by that id and never by pool alone, but
+FillsOptions has no market field: getFills(pool, { limit }) applies the
+limit to the pool's tape and leaves the caller to filter what survives.
+
+Measured on testnet on 2026-08-28, one 50-row page from pool
+0xc09e4a5bdee2899962727125fb5eaeb896798e46 spanned thirteen market
+generations, six of them belonging to the market being asked about. At a
+smaller page size rows go missing outright: at limit 5 on another recycled
+pool, market 48468 returned 4 of its 5 fills. The page size a caller needs
+is not a property of the market, it is how many fills the pool has recorded
+since that market's oldest fill, and that grows every time the pool is
+reused. No fixed limit stays correct and a truncated tape is
+indistinguishable from a short one.
+
+market_id is already filterable (FillQueryFields selects it, Fill_bool_exp
+accepts it), so these helpers push it into the where clause and the limit
+means "rows in this market". Reported upstream against
+@somnia-chain/markets-sdk; this gives kit users a correct path meanwhile.
+
+Adds getMarketFills, getMarketUserFills and getAllMarketFills to ec-core,
+plus gotcha 17 documenting the measurement.
+---
+ docs/gotchas.md               |  34 +++++++
+ packages/ec-core/src/fills.ts | 161 ++++++++++++++++++++++++++++++++++
+ packages/ec-core/src/index.ts |   8 ++
+ 3 files changed, 203 insertions(+)
+ create mode 100644 packages/ec-core/src/fills.ts
+
+diff --git a/docs/gotchas.md b/docs/gotchas.md
+index 5cc9606..63bfe49 100644
+--- a/docs/gotchas.md
++++ b/docs/gotchas.md
+@@ -136,3 +136,37 @@ market table has the correct per-token decimals.
+ **Symptom:** you quote/cross against a price that's already gone.
+ **Fix:** treat REST snapshots as approximate; for anything price-sensitive, read `getBookLevels`
+ on-chain (the strategies do), and periodically reconcile your WS view against it.
++
++### 17. Fills are keyed on a RECYCLED pool address, so `getFills` mixes markets
++
++**Symptom:** a market's trade tape has fills that never happened in it, or is short by
++an amount you cannot explain — and markout, per-market PnL and fill-rate stats are
++quietly wrong.
++
++**Cause:** a binary pool is reused by successive markets, so one pool address carries
++the tape of every market that has ever run on it. The SDK's own `FillRow.market` docs
++say to "group and label by this, never by `pool` alone" — but `FillsOptions` has no
++market field, so `getFills(pool, { limit })` applies the limit to the POOL's tape and
++leaves you to filter client-side, after rows have already been dropped.
++
++Measured on testnet, 2026-08-28: one 50-row page from pool
++`0xc09e4a5bdee2899962727125fb5eaeb896798e46` spanned **thirteen market generations**,
++of which six rows belonged to the market being asked about. The page size you need is
++not a property of the market — it is however many fills the pool has recorded since
++that market's oldest fill, which grows every time the pool is reused. No fixed `limit`
++stays correct, and a truncated tape looks exactly like a short one.
++
++**Fix:** scope by `marketId` server-side. `ec-core` does this:
++
++```ts
++import { getMarketFills, getMarketUserFills, getAllMarketFills } from "@dreamdex-bot-kit/ec-core";
++
++// The last 50 fills IN THIS MARKET — the limit means what you expect.
++const tape = await getMarketFills(market.info.marketId, { limit: 50 }, cfg.indexerUrl);
++
++// Your own fills in one market, as maker or taker.
++const mine = await getMarketUserFills(account, market.info.marketId, { limit: 200 }, cfg.indexerUrl);
++```
++
++Reported upstream against `@somnia-chain/markets-sdk`; these helpers exist so kit users
++have a correct path meanwhile.
+diff --git a/packages/ec-core/src/fills.ts b/packages/ec-core/src/fills.ts
+new file mode 100644
+index 0000000..98f0927
+--- /dev/null
++++ b/packages/ec-core/src/fills.ts
+@@ -0,0 +1,161 @@
++/**
++ * @license
++ * Copyright DreamDEX S.A.
++ *
++ * Use of this source code is governed by an MIT-style license that can be
++ * found in the LICENSE file at https://github.com/somnia-chain/dreamdex-bot-kit/blob/main/LICENSE
++ */
++
++// Fill queries scoped to a MARKET, not just a pool.
++//
++// The SDK's `getFills(pool, opts)` and `getUserFills(account, { pool })` scope by
++// pool address and apply `limit` to that result. On event contracts a binary pool
++// is RECYCLED across successive markets, so one pool address carries the tape of
++// every market that has ever run on it. The SDK's own `FillRow.market` docs say
++// so plainly: "Group and label by this, never by `pool` alone."
++//
++// But `FillsOptions` has no market filter, so the limit is applied before any
++// market scoping can happen. Measured against the live testnet indexer on
++// 2026-08-28, one 50-row page from a single recycled pool
++// (0xc09e4a5bdee2899962727125fb5eaeb896798e46) spanned THIRTEEN market
++// generations, of which four rows belonged to the market being asked about. A
++// caller that pages by 50 and filters client-side cannot tell a market's short
++// tape from a truncated one.
++//
++// These helpers push `market_id` into the server-side `where`, so `limit` means
++// "the last N fills in THIS market". Same indexer, same row shape, same ordering.
++//
++// Reported upstream against @somnia-chain/markets-sdk; kept here so kit users
++// have a correct path today.
++
++import type { FillRow } from "@somnia-chain/markets-sdk";
++
++/** Paging and time window, mirroring the SDK's `FillsOptions`. */
++export interface MarketFillsOptions {
++  /** Max rows (default 50). */
++  limit?: number;
++  /** Row offset for paging the tape (default 0). */
++  offset?: number;
++  /** Only fills at/after this unix-seconds timestamp. */
++  since?: number;
++  /** Only fills at/before this unix-seconds timestamp. */
++  until?: number;
++}
++
++const FILL_FIELDS = `
++  id
++  market: market_id
++  pool
++  fillPrice
++  quantity
++  quoteQuantity
++  maker
++  makerSide
++  taker
++  takerSide
++  kind
++  takerIsBid
++  timestamp
++  txHash
++  takerOrder { owner side }
++`;
++
++type Where = Record<string, unknown>;
++
++const applyWindow = (where: Where, o: MarketFillsOptions): Where => {
++  if (o.since != null || o.until != null) {
++    const ts: Record<string, string> = {};
++    if (o.since != null) ts._gte = String(o.since);
++    if (o.until != null) ts._lte = String(o.until);
++    where.timestamp = ts;
++  }
++  return where;
++};
++
++async function query(indexerUrl: string, where: Where, o: MarketFillsOptions): Promise<FillRow[]> {
++  const res = await fetch(indexerUrl, {
++    method: "POST",
++    headers: { "content-type": "application/json" },
++    body: JSON.stringify({
++      query: `query MarketFills($where: Fill_bool_exp!, $limit: Int!, $offset: Int!) {
++        Fill(where: $where, order_by: { timestamp: desc }, limit: $limit, offset: $offset) {${FILL_FIELDS}}
++      }`,
++      variables: { where, limit: o.limit ?? 50, offset: o.offset ?? 0 },
++    }),
++  });
++
++  const body = (await res.json()) as { data?: { Fill: FillRow[] }; errors?: unknown[] };
++  // An empty array means "no fills". A failed read must never look like one.
++  if (body.errors?.length) throw new Error(`indexer: ${JSON.stringify(body.errors).slice(0, 300)}`);
++  return body.data?.Fill ?? [];
++}
++
++/**
++ * Recent fills for ONE market, newest first.
++ *
++ * `marketId` is the market's stable bytes32 id (`UnifiedMarket.info.marketId`,
++ * or `FillRow.market`), NOT a pool address. Unlike `getFills(pool, …)` the limit
++ * applies after market scoping, so a page of 50 is 50 fills in this market.
++ */
++export const getMarketFills = (
++  marketId: string,
++  opts: MarketFillsOptions,
++  indexerUrl: string,
++): Promise<FillRow[]> => query(indexerUrl, applyWindow({ market_id: { _eq: marketId } }, opts), opts);
++
++/**
++ * Fills `account` participated in (as maker OR taker) within ONE market.
++ *
++ * The three ways an account appears on a fill: as the maker, as the denormalized
++ * taker, or as the owner of the taker's order. The last is authoritative on
++ * binary markets, where `takerSide` is backfilled and can still be null on a row
++ * whose taker is already stamped.
++ */
++export const getMarketUserFills = (
++  account: string,
++  marketId: string,
++  opts: MarketFillsOptions,
++  indexerUrl: string,
++): Promise<FillRow[]> => {
++  const acct = account.toLowerCase();
++  return query(
++    indexerUrl,
++    applyWindow(
++      {
++        market_id: { _eq: marketId },
++        _or: [{ maker: { _eq: acct } }, { taker: { _eq: acct } }, { takerOrder: { owner: { _eq: acct } } }],
++      },
++      opts,
++    ),
++    opts,
++  );
++};
++
++/**
++ * Every fill in a market, paged until the tape runs out.
++ *
++ * `maxRows` is a guard, not a target: a long-running market can have a large
++ * tape and an unbounded loop against a public indexer is not a kindness. When
++ * the cap is reached the result is truncated, and the caller is told which by
++ * comparing `rows.length` to `maxRows`.
++ */
++export async function getAllMarketFills(
++  marketId: string,
++  indexerUrl: string,
++  opts: { pageSize?: number; maxRows?: number; since?: number; until?: number } = {},
++): Promise<FillRow[]> {
++  const pageSize = Math.min(opts.pageSize ?? 200, 1000);
++  const maxRows = opts.maxRows ?? 5_000;
++  const out: FillRow[] = [];
++
++  for (let offset = 0; out.length < maxRows; offset += pageSize) {
++    const page = await getMarketFills(
++      marketId,
++      { limit: Math.min(pageSize, maxRows - out.length), offset, ...(opts.since != null ? { since: opts.since } : {}), ...(opts.until != null ? { until: opts.until } : {}) },
++      indexerUrl,
++    );
++    out.push(...page);
++    if (page.length < pageSize) break;
++  }
++  return out;
++}
+diff --git a/packages/ec-core/src/index.ts b/packages/ec-core/src/index.ts
+index c99b3cc..858b359 100644
+--- a/packages/ec-core/src/index.ts
++++ b/packages/ec-core/src/index.ts
+@@ -78,6 +78,13 @@ export {
+   type ClaimOptions,
+ } from "./claim.js";
+ 
++export {
++  getMarketFills,
++  getMarketUserFills,
++  getAllMarketFills,
++  type MarketFillsOptions,
++} from "./fills.js";
++
+ // Re-export the SDK's converters + core types so bots have one import surface.
+ export {
+   probabilityToPrice,
+@@ -90,4 +97,5 @@ export {
+   type UnifiedOrderBook,
+   type UnifiedPrice,
+   type MarketOnchain,
++  type FillRow,
+ } from "@somnia-chain/markets-sdk";
+-- 
+2.50.1 (Apple Git-155)
+

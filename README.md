@@ -2,99 +2,179 @@
 
 **One capital pool. Many trading agents. One shared risk envelope.**
 
-Several independently controlled DreamDEX Event Contract agents share one capital
-base on Somnia. Every proposed order must pass both its local agent policy and
-atomic portfolio-wide admission. An individually legal order is rejected when
-reservations or positions created by *other* agents have already consumed portfolio
-risk capacity.
+Your agents can each follow the rules and still break your portfolio. AIRSPACE
+lets independent DreamDEX Event Contract agents share one capital base on Somnia
+while enforcing one portfolio-wide risk envelope across all of them. A trade is
+rejected purely because of what the *other* agents already hold.
 
-Dominant mechanism: **cross-agent portfolio admission + reservation + post-trade
-reconciliation.** Not an AI trader.
+Dominant mechanism: **cross-agent portfolio admission + atomic reservation +
+post-trade reconciliation.** Not an AI trader, not a prediction-market terminal.
 
-**Status: product lock reached** (tag `airspace-product-lock`, 11/11 criteria,
-76 passing tests, live Shannon evidence). The production build has not started —
-`contracts/`, `apps/`, `packages/`, `workers/`, `supabase/`, `scripts/` and `test/`
-are intentionally empty pending the PRD/DESIGN pass.
+---
 
-## The result, live on Shannon
+## The moment
+
+Three independently-keyed agents, one 15-minute tUSDC risk domain, a 500-contract
+ceiling. Live on Somnia Shannon.
 
 ```
-domain = keccak256(creator, collateral, canonicalCadence)   derived on-chain, no attestation
+AGENT A  reserves 180  on market bd32                   180 / 500
+AGENT B  reserves 240  on market bd31, a different pool  420 / 500
+AGENT C  proposes 150
 
-AGENT_A reserves 180                        ->  180 / 500
-AGENT_B reserves 240 on a different market  ->  420 / 500
-AGENT_C proposes 150   ->  DomainRiskExceeded
-        C's own policy passed. Every market check passed.
-        agentCommitted[C] unchanged. Domain state unchanged.
-release A  ->  320 / 500      C retries the identical shape  ->  ADMITTED, 470 / 500
+  agent policy      PASS      420 + 150 = 570  >  500
+  market trading    PASS
+  market generation PASS      refused: DOMAIN_RISK_EXCEEDED
+  tick / lot        PASS
+  price ceiling     PASS      C's own policy passed.
+  market headroom   PASS      Every check C controls passed.
+  portfolio domain  FAIL      agentCommitted[C]: 0 -> 0. Nothing moved.
+
+release A                                                240 / 500
+C retries the identical intent                ADMITTED,  390 / 500
 ```
 
-A's and B's orders were **unfilled** — proof that reservations occupy the envelope
-before they fill.
+C was not too large, too fast or misconfigured. A and B had used the room.
+That refusal is the product.
+
+---
+
+## Live
+
+| | |
+| --- | --- |
+| Chain | Somnia Shannon (50312) |
+| Factory | [`0x342d200aCF529905CC815D4ff9841053ea1c2D61`](https://shannon-explorer.somnia.network/address/0x342d200aCF529905CC815D4ff9841053ea1c2D61) |
+| Implementation | [`0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0`](https://shannon-explorer.somnia.network/address/0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0) |
+| Campaign portfolio | [`0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc`](https://shannon-explorer.somnia.network/address/0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc) |
+| Venue | DreamDEX Event Contracts, tUSDC |
+
+Evidence in [`evidence/production/`](evidence/production/): the canonical A/B/C
+proof, two live agent campaigns, and the hostile campaign.
+
+### What the agents actually did
+
+Three Workers, three keys, three KV namespaces, no shared state and no
+coordination. Thirty rounds:
+
+| Outcome | Count |
+| --- | --- |
+| Admitted and placed | 32 |
+| **Refused by the shared envelope** | **21** — `DOMAIN_RISK_EXCEEDED` 14, `DOMAIN_COMMITTED_EXCEEDED` 7 |
+| Refused by an agent's own price band | 2 |
+| No signal / no live market | 35 |
+
+Every one of those 21 refusals hit an agent that had done nothing wrong. In
+rounds 15 and 16 all three were blocked at once, each by the other two.
+
+### The hostile campaign
+
+Thirteen cases, thirteen passes, nothing skipped —
+[`evidence/production/adversarial.json`](evidence/production/adversarial.json):
+
+```
+non-owner-withdraw           refused
+non-owner-set-policy         refused
+unregistered-agent           refusal 1  NOT_AGENT
+nonce-replay                 refusal 4  INTENT_REPLAYED
+stale-generation             refusal 8  on a rolled market
+rival-release-live           refused
+submit-despite-refusal       refusal 22 DOMAIN_RISK_EXCEEDED, agent committed unchanged
+report-a-success-as-refusal  rejected
+report-unrelated-tx          rejected
+duplicate-ingestion          145 logs re-seen and skipped, row counts unchanged
+projection-consistency       78 intents, 78 receipts
+rpc-outage                   health ok:false; snapshot served labelled stale
+owner-recovery-always        owner can withdraw the full balance with agents live
+```
+
+---
+
+## How it decides
+
+A domain is derived on-chain during execution:
+
+```
+domain = keccak256(creator, collateral, canonicalCadence)
+```
+
+No configuration, no indexer, no attestation. A market minted one second ago
+lands in the right domain by itself.
+
+It is a **cadence** domain and never an asset. `marketId → asset` is not exposed
+by any view on this venue, so claiming otherwise would mean enforcing a limit
+against a label the contract cannot check. Sibling BTC and ETH 15-minute series
+from one creator share a ceiling by design — which also means an agent cannot
+escape a limit by switching between them. Said plainly in the product UI.
+
+Exposure is **measured, not accumulated**. Realized positions are read from
+ERC-6909 balances at evaluation time; only unfilled reservations are stored. The
+counter-based version was built first and live fork tests broke it: `getOrder`
+reverts identically for a filled order and a cancelled one, so a counter drifts
+and cannot be repaired.
+
+Everything resolves toward one invariant:
+
+> Uncertainty may **overstate** portfolio usage. It may never **understate**
+> maximum commitment.
+
+---
 
 ## Repository
 
 ```
-apps/          frontends                        (empty, pending PRD/DESIGN)
-contracts/     production contracts             (empty, pending PRD/DESIGN)
-packages/      shared TypeScript packages       (empty, pending PRD/DESIGN)
-workers/       off-chain keepers                (empty, pending PRD/DESIGN)
-supabase/      schema, migrations, functions    (empty, pending PRD/DESIGN)
-scripts/       operational scripts              (empty, pending PRD/DESIGN)
-test/          production tests                 (empty, pending PRD/DESIGN)
-
-engineering/   hostile-validation history — three spikes, 76 tests, live evidence
-evidence/      what is public, and which artifact backs which claim
+contracts/       AirspacePortfolio + factory, 48 tests incl. invariants and live-fork
+packages/        types · protocol · risk · sdk · db      shared, no duplicated logic
+workers/
+  api/           Hono + one Durable Object per portfolio; serves the web app
+  indexer/       cron: chain logs to projections, idempotent by unique key
+  lifecycle/     cron + queue: permissionless release and prune
+  agent/         three sample agents, one deployment and one key each
+apps/web/        React; the ceiling line, the gate stack, the receipt
+supabase/        14 tables of projections, RLS
+scripts/         deploy, live proof, campaign, adversarial, secret scan
+contributions/   the DreamDEX SDK defect: report, reproduction, patch
+engineering/     the hostile validation that produced the design. Immutable.
 ```
 
-## Engineering history
+`engineering/` is the record of how the design was arrived at, including the
+things that were killed. It is not rewritten to look tidier in hindsight.
 
-Read [`engineering/README.md`](engineering/README.md) first — it is the
-reviewer-facing account of how the product got here, including the two REVISE
-verdicts and the limitations that survived into LOCK.
+---
 
-| Stage | Candidate | Verdict |
-|---|---|---|
-| [00-flightpath-feasibility](engineering/00-flightpath-feasibility/) | Single-agent execution assurance | REVISE |
-| [01-airspace-portfolio-spike](engineering/01-airspace-portfolio-spike/) | Cross-agent portfolio, owner-attested buckets | REVISE |
-| [02-product-lock](engineering/02-product-lock/) | Cross-agent portfolio, structural risk domains | **LOCK — 11/11** |
-
-## Protocol findings that shaped the design
-
-- **`placeBinaryOrderFor` reverts `OnlyApprovedContracts()` for every EOA caller**,
-  so there is no session-key path for Event Contracts — custody-by-contract is
-  forced, not chosen.
-- **`marketId → asset` exists on-chain in creation events but no view exposes it**
-  (304 selector probes). Risk domains are therefore *cadence* domains: the contract
-  does not know BTC from ETH and never claims to. Sibling series share a domain,
-  intentionally.
-- **Cadence jitter is real** — two live markets had an 898-second window on a
-  900-second series, so raw `expiry - tradingStart` is unsafe as a domain key.
-- **`getOrder` reverts identically for filled and cancelled orders**, so a running
-  exposure counter cannot stay correct. Positions are measured from ERC-6909.
-- **Pools are recycled across markets and underlyings** (one served 52 markets
-  across both BTC and ETH), so a pool allowlist binds to a mutable slot.
-
-## Reproducing
+## Run it
 
 ```bash
-forge install foundry-rs/forge-std     # lib/ is gitignored
-forge build
-cp .env.example .env.lock              # then fill in the stage's pinned block
+pnpm install
+pnpm -C contracts test          # 38 local tests
+node scripts/refresh-fork-env.mjs && pnpm -C contracts test:fork   # 10 against live Shannon
+pnpm dev                        # api :8787 + web :5173
 ```
 
-Per-stage commands are in [`engineering/README.md`](engineering/README.md).
+Full setup, including the credentials you need and the ones you do not, in
+[SETUP.md](SETUP.md).
 
-## Security
+---
 
-No secret has ever been committed: this repository's history begins at the
-product-lock checkpoint. `.env*`, `.wallets.json`, keystores and credentials are
-gitignored. Run the scanner yourself:
+## Reading order
 
-```bash
-node engineering/02-product-lock/research/onchain-probes/secret-scan.mjs .
-```
+| | |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | What the layers are and which arrows carry authority |
+| [DECISIONS.md](DECISIONS.md) | Fourteen choices that could have gone the other way, and the measurement that settled each |
+| [SECURITY.md](SECURITY.md) | Trust boundaries, recovery, known limitations, secret handling |
+| [SETUP.md](SETUP.md) | Clean-clone to running |
+| [CONTRIBUTIONS.md](CONTRIBUTIONS.md) | The upstream defect we found and fixed |
+| [PRD.md](PRD.md) · [DESIGN.md](DESIGN.md) | The canonical product and visual specification |
 
-The testnet wallets used in the spikes are throwaway keys; their addresses are
-published, their private keys were never tracked. See
-[`evidence/README.md`](evidence/README.md).
+---
+
+## What this is not
+
+Not an AI trading bot. Not a generic prediction-market terminal. Not a
+single-agent mandate vault. Not a portfolio dashboard. AIRSPACE has one job:
+stop several independent agents from collectively breaching a limit their owner
+set, and show exactly why when it does.
+
+It does not eliminate market risk, and it is **unaudited testnet software**. See
+[SECURITY.md](SECURITY.md).

@@ -8,18 +8,29 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm -r --filter './packages/*' build",
+    "dev": "pnpm --parallel --filter @airspace/api --filter @airspace/web dev",
+    "build": "pnpm -r --filter './packages/*' build && pnpm -C apps/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
     "contracts:build": "forge build --root contracts",
-    "contracts:test": "forge test --root contracts",
-    "secrets:scan": "node engineering/02-product-lock/research/onchain-probes/secret-scan.mjs .",
-    "abi:sync": "node scripts/sync-abi.mjs"
+    "contracts:test": "forge test --root contracts --no-match-path '*fork*'",
+    "contracts:test:fork": "node scripts/refresh-fork-env.mjs && pnpm -C contracts test:fork",
+    "contracts:sizes": "forge build --root contracts --sizes",
+    "abi:sync": "node scripts/sync-abi.mjs",
+    "abi:check": "node scripts/sync-abi.mjs && git diff --exit-code packages/sdk/src/abi.ts",
+    "secrets:scan": "node scripts/secret-scan.mjs",
+    "secrets:scan:history": "node scripts/secret-scan.mjs --history",
+    "proof:live": "node scripts/live-proof.mjs",
+    "campaign:setup": "node scripts/campaign-setup.mjs",
+    "campaign:run": "node scripts/campaign-run.mjs",
+    "adversarial": "node scripts/adversarial.mjs",
+    "scale": "node scripts/scale.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm contracts:test && pnpm abi:check && pnpm secrets:scan"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "@types/node": "^22.10.2"
+    "@types/node": "^22.10.2",
+    "@supabase/supabase-js": "^2.47.10"
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "@airspace/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "forge build",
+    "sizes": "forge build --sizes",
+    "test": "forge test --no-match-path '*fork*'",
+    "test:fork": "set -a && . ./.env.fork && set +a && forge test --match-path '*fork*'",
+    "typecheck": "forge build",
+    "fmt": "forge fmt --check"
+  }
+}

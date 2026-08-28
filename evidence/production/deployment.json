@@ -1,0 +1,92 @@
+{
+  "recordedAt": "2026-08-28T11:41:43.986253Z",
+  "chain": {
+    "name": "Somnia Shannon",
+    "chainId": 50312,
+    "rpc": "https://dream-rpc.somnia.network",
+    "explorer": "https://shannon-explorer.somnia.network"
+  },
+  "contracts": {
+    "factory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
+    "implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0",
+    "runtimeBytes": 23689,
+    "eip170MarginBytes": 887
+  },
+  "campaignPortfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "cloudflare": {
+    "accountId": "eb94a234b390bb8da04babac718d6c92",
+    "workers": {
+      "airspace-api": {
+        "url": "https://airspace-api.timjosh507.workers.dev",
+        "role": "read API, admission preview, refusal recovery; also serves the web app",
+        "bindings": [
+          "PORTFOLIO (Durable Object)",
+          "RECONCILE_QUEUE (producer)",
+          "ASSETS"
+        ],
+        "secrets": [
+          "SUPABASE_SERVICE_ROLE_KEY"
+        ]
+      },
+      "airspace-indexer": {
+        "role": "chain logs to Supabase projections",
+        "trigger": "cron * * * * *",
+        "secrets": [
+          "SUPABASE_SERVICE_ROLE_KEY",
+          "INDEXER_TOKEN"
+        ]
+      },
+      "airspace-lifecycle": {
+        "url": "https://airspace-lifecycle.timjosh507.workers.dev",
+        "role": "permissionless release and prune",
+        "trigger": "cron * * * * *",
+        "queue": "airspace-reconcile (producer and consumer)",
+        "secrets": [
+          "SUPABASE_SERVICE_ROLE_KEY"
+        ]
+      },
+      "airspace-agent-momentum": {
+        "role": "sample agent",
+        "trigger": "cron * * * * *",
+        "agentAddress": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+        "secrets": [
+          "AGENT_PRIVATE_KEY"
+        ]
+      },
+      "airspace-agent-reversion": {
+        "role": "sample agent",
+        "trigger": "cron * * * * *",
+        "agentAddress": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+        "secrets": [
+          "AGENT_PRIVATE_KEY"
+        ]
+      },
+      "airspace-agent-spread": {
+        "role": "sample agent",
+        "trigger": "cron * * * * *",
+        "agentAddress": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20",
+        "secrets": [
+          "AGENT_PRIVATE_KEY"
+        ]
+      }
+    },
+    "queues": [
+      "airspace-reconcile"
+    ],
+    "kvNamespaces": {
+      "momentum-AGENT_STATE": "ad45ca93966a44fdb8b961ea400196eb",
+      "reversion-AGENT_STATE": "88aebd393a0749218a961e3aa977d4ba",
+      "spread-AGENT_STATE": "f2172324c75b4999ad64a9601d0d6658"
+    }
+  },
+  "supabase": {
+    "projectRef": "ldhkqnedurkaxehufchg",
+    "url": "https://ldhkqnedurkaxehufchg.supabase.co",
+    "migrations": [
+      "20260828000001_initial_schema",
+      "20260828000002_rls"
+    ],
+    "note": "Projections only. The anon key is public by design and RLS-scoped; the service-role key exists solely as a Worker secret."
+  },
+  "secretsNote": "No credential value appears in this file or anywhere in the repository. Only names and public identifiers."
+}

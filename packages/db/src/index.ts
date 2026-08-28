@@ -8,6 +8,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+export type { SupabaseClient } from "@supabase/supabase-js";
 export * from "./schema.js";
 
 /** A read-only client for the browser. The anon key can only read public projections. */

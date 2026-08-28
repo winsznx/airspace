@@ -1,0 +1,115 @@
+{
+  "measuredAt": "2026-08-28T10:59:23.177Z",
+  "perGeneration": [
+    {
+      "market": "38113",
+      "inPage": 1,
+      "total": 3,
+      "truncated": true
+    },
+    {
+      "market": "48549",
+      "inPage": 6,
+      "total": 6,
+      "truncated": false
+    },
+    {
+      "market": "48474",
+      "inPage": 4,
+      "total": 4,
+      "truncated": false
+    },
+    {
+      "market": "48163",
+      "inPage": 12,
+      "total": 12,
+      "truncated": false
+    },
+    {
+      "market": "47854",
+      "inPage": 6,
+      "total": 6,
+      "truncated": false
+    },
+    {
+      "market": "47548",
+      "inPage": 1,
+      "total": 1,
+      "truncated": false
+    },
+    {
+      "market": "43214",
+      "inPage": 7,
+      "total": 7,
+      "truncated": false
+    },
+    {
+      "market": "43062",
+      "inPage": 1,
+      "total": 1,
+      "truncated": false
+    },
+    {
+      "market": "41863",
+      "inPage": 2,
+      "total": 2,
+      "truncated": false
+    },
+    {
+      "market": "41785",
+      "inPage": 4,
+      "total": 4,
+      "truncated": false
+    },
+    {
+      "market": "41710",
+      "inPage": 3,
+      "total": 3,
+      "truncated": false
+    },
+    {
+      "market": "39894",
+      "inPage": 2,
+      "total": 2,
+      "truncated": false
+    },
+    {
+      "market": "38309",
+      "inPage": 1,
+      "total": 1,
+      "truncated": false
+    }
+  ],
+  "truncatedGenerations": 1,
+  "deepestGeneration": {
+    "market": "48163",
+    "fills": 12,
+    "limitNeededOnPoolScopedApi": 22
+  },
+  "indexer": "https://dev.smk.somnia.host/v1/graphql",
+  "limit": 50,
+  "scanned": 1000,
+  "distinctPools": 20,
+  "recycledPools": 2,
+  "pool": "0xc09e4a5bdee2899962727125fb5eaeb896798e46",
+  "targetMarketId": "0x000000000000000000000000000000000000000000000000000000000000bda5",
+  "generationsInOnePage": 13,
+  "generationBreakdown": {
+    "38113": 1,
+    "38309": 1,
+    "39894": 2,
+    "41710": 3,
+    "41785": 4,
+    "41863": 2,
+    "43062": 1,
+    "43214": 7,
+    "47548": 1,
+    "47854": 6,
+    "48163": 12,
+    "48474": 4,
+    "48549": 6
+  },
+  "rowsForTargetInPage": 6,
+  "rowsForTargetTotal": 6,
+  "truncated": false
+}

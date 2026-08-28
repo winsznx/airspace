@@ -1,0 +1,92 @@
+# One codebase, three deployments.
+#
+# Each environment is a separate Worker with its OWN key, its own KV state and
+# its own schedule. Nothing is shared between them at runtime: they discover
+# markets independently, decide independently, and only ever meet at the
+# portfolio contract. That is what makes the shared-envelope claim testable.
+#
+# Secrets per environment (wrangler secret put --env <name>):
+#   AGENT_PRIVATE_KEY
+
+name = "airspace-agent"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[[kv_namespaces]]
+binding = "AGENT_STATE"
+id = "airspace-agent-state-local"
+
+[vars]
+CHAIN_ID = "50312"
+SHANNON_RPC = "https://dream-rpc.somnia.network"
+SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
+AIRSPACE_PORTFOLIO = ""
+AIRSPACE_API = ""
+AGENT_STRATEGY = "momentum"
+AGENT_SIZE = "40000000"
+AGENT_CADENCE = "900"
+
+# --- momentum -----------------------------------------------------------------
+[env.momentum]
+name = "airspace-agent-momentum"
+
+[env.momentum.triggers]
+crons = ["* * * * *"]
+
+[env.momentum.vars]
+CHAIN_ID = "50312"
+SHANNON_RPC = "https://dream-rpc.somnia.network"
+SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
+AIRSPACE_PORTFOLIO = "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc"
+AIRSPACE_API = "https://airspace-api.timjosh507.workers.dev"
+AGENT_STRATEGY = "momentum"
+AGENT_SIZE = "40000000"
+AGENT_CADENCE = "900"
+
+[[env.momentum.kv_namespaces]]
+binding = "AGENT_STATE"
+id = "ad45ca93966a44fdb8b961ea400196eb"
+
+# --- reversion ----------------------------------------------------------------
+[env.reversion]
+name = "airspace-agent-reversion"
+
+[env.reversion.triggers]
+crons = ["* * * * *"]
+
+[env.reversion.vars]
+CHAIN_ID = "50312"
+SHANNON_RPC = "https://dream-rpc.somnia.network"
+SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
+AIRSPACE_PORTFOLIO = "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc"
+AIRSPACE_API = "https://airspace-api.timjosh507.workers.dev"
+AGENT_STRATEGY = "reversion"
+AGENT_SIZE = "60000000"
+AGENT_CADENCE = "900"
+
+[[env.reversion.kv_namespaces]]
+binding = "AGENT_STATE"
+id = "88aebd393a0749218a961e3aa977d4ba"
+
+# --- spread -------------------------------------------------------------------
+[env.spread]
+name = "airspace-agent-spread"
+
+[env.spread.triggers]
+crons = ["* * * * *"]
+
+[env.spread.vars]
+CHAIN_ID = "50312"
+SHANNON_RPC = "https://dream-rpc.somnia.network"
+SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
+AIRSPACE_PORTFOLIO = "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc"
+AIRSPACE_API = "https://airspace-api.timjosh507.workers.dev"
+AGENT_STRATEGY = "spread"
+AGENT_SIZE = "30000000"
+AGENT_CADENCE = "900"
+
+[[env.spread.kv_namespaces]]
+binding = "AGENT_STATE"
+id = "f2172324c75b4999ad64a9601d0d6658"

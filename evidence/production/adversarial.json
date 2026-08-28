@@ -1,0 +1,95 @@
+{
+  "ranAt": "2026-08-28T11:20:18.187Z",
+  "chainId": 50312,
+  "portfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "market": {
+    "id": "0x000000000000000000000000000000000000000000000000000000000000be1a",
+    "cadence": 900,
+    "domain": "0xecad341196fc789ff26611e774c63542fba1a40e8bec10e253bcfe7fb7c5f784"
+  },
+  "summary": {
+    "pass": 13,
+    "fail": 0,
+    "skip": 0
+  },
+  "cases": [
+    {
+      "id": "non-owner-withdraw",
+      "mustNot": "a non-owner must never move collateral",
+      "status": "PASS",
+      "detail": "refused with revert"
+    },
+    {
+      "id": "non-owner-set-policy",
+      "mustNot": "a non-owner must never change a ceiling",
+      "status": "PASS",
+      "detail": "refused with revert"
+    },
+    {
+      "id": "unregistered-agent",
+      "mustNot": "an unregistered key must never trade the pool",
+      "status": "PASS",
+      "detail": "refusal 1 NOT_AGENT"
+    },
+    {
+      "id": "nonce-replay",
+      "mustNot": "a used agent nonce must never be reusable",
+      "status": "PASS",
+      "detail": "refusal 4 INTENT_REPLAYED at nonce 25"
+    },
+    {
+      "id": "stale-generation",
+      "mustNot": "an intent must never execute against a rolled market",
+      "status": "PASS",
+      "detail": "refusal 8 on a stale generation"
+    },
+    {
+      "id": "rival-release-live",
+      "mustNot": "a live reservation must never be releasable by anyone",
+      "status": "PASS",
+      "detail": "refused with revert"
+    },
+    {
+      "id": "submit-despite-refusal",
+      "mustNot": "a refused intent must change no state and must be recoverable",
+      "status": "PASS",
+      "detail": "refusal 22 DOMAIN_RISK_EXCEEDED, agent committed 586800000 unchanged, tx 0x7abf738f46"
+    },
+    {
+      "id": "report-a-success-as-refusal",
+      "mustNot": "the API must never record a refusal that did not happen",
+      "status": "PASS",
+      "detail": "rejected: transaction did not revert: an admitted intent is indexed from its logs"
+    },
+    {
+      "id": "report-unrelated-tx",
+      "mustNot": "the API must never accept a transaction sent elsewhere",
+      "status": "PASS",
+      "detail": "rejected: transaction was not sent to this portfolio"
+    },
+    {
+      "id": "duplicate-ingestion",
+      "mustNot": "re-processing blocks already seen must not duplicate a projection",
+      "status": "PASS",
+      "detail": "rewound 473429424 -> 473409424, 145 logs re-seen and skipped, 0 newly applied, counts unchanged at 78"
+    },
+    {
+      "id": "projection-consistency",
+      "mustNot": "every recorded intent must have exactly one receipt",
+      "status": "PASS",
+      "detail": "78 intents, 78 receipts, 53 reservations"
+    },
+    {
+      "id": "rpc-outage",
+      "mustNot": "an RPC outage must be visible, never silently stale",
+      "status": "PASS",
+      "detail": "health ok:false rpc:unavailable; snapshot served from block 473430421 labelled stale (rpc-unavailable)"
+    },
+    {
+      "id": "owner-recovery-always",
+      "mustNot": "the owner must be able to withdraw with no cooperation",
+      "status": "PASS",
+      "detail": "owner can withdraw the full 5406550000 balance with agents live"
+    }
+  ]
+}

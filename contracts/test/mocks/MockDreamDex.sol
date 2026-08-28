@@ -284,8 +284,20 @@ contract MockModule {
         uint256 nonce = r.pool == address(0) ? 0 : MockPool(r.pool).marketNonce();
         uint256 yesId = (uint256(uint160(r.pool)) << 72) | (nonce << 8);
         return (
-            0, 2, 0, r.collateral, 0, bytes32(0), address(0), r.creator, r.market, r.pool, yesId, yesId + 1,
-            r.tradingStart, r.expiry
+            0,
+            2,
+            0,
+            r.collateral,
+            0,
+            bytes32(0),
+            address(0),
+            r.creator,
+            r.market,
+            r.pool,
+            yesId,
+            yesId + 1,
+            r.tradingStart,
+            r.expiry
         );
     }
 

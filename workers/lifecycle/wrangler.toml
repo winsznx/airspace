@@ -24,7 +24,7 @@ dead_letter_queue = "airspace-reconcile-dlq"
 CHAIN_ID = "50312"
 SHANNON_RPC = "https://dream-rpc.somnia.network"
 SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
-AIRSPACE_FACTORY = ""
-SUPABASE_URL = ""
+AIRSPACE_FACTORY = "0x342d200aCF529905CC815D4ff9841053ea1c2D61"
+SUPABASE_URL = "https://ldhkqnedurkaxehufchg.supabase.co"
 
 # Secrets (wrangler secret put): SUPABASE_SERVICE_ROLE_KEY, KEEPER_PRIVATE_KEY

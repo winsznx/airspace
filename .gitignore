@@ -64,3 +64,9 @@ contracts/cache/
 contracts/broadcast/
 contracts/.env*
 !contracts/.env.example
+
+# Cloudflare local state and secrets
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/

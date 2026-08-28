@@ -1,0 +1,36 @@
+round   1  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   2  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   3  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   4  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   5  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   6  momentum:no-signal  reversion:no-signal  spread:no-signal
+round   7  momentum:no-market  reversion:no-market  spread:no-market
+round   8  momentum:no-market  reversion:no-market  spread:no-market
+round   9  momentum:no-market  reversion:no-market  spread:no-market
+round  10  momentum:no-market  reversion:no-market  spread:no-market
+round  11  momentum:no-signal  reversion:no-signal  spread:no-signal
+round  12  momentum:no-signal  reversion:submitted(0x35658cec87)  spread:submitted(0x3b1d59add3)
+round  13  momentum:submitted(0x3f76af8626)  reversion:submitted(0x9f1e4d29c1)  spread:submitted(0x87181f1761)
+round  14  momentum:no-signal  reversion:submitted(0xc999f448d4)  spread:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)
+round  15  momentum:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)  reversion:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)  spread:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)
+round  16  momentum:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)  reversion:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)  spread:refused-preflight(DOMAIN_COMMITTED_EXCEEDED)
+round  17  momentum:submitted(0x9e16294586)  reversion:submitted(0xce96c97646)  spread:submitted(0x0573b25bb8)
+round  18  momentum:submitted(0x813e69d6af)  reversion:submitted(0x599ef82fd7)  spread:submitted(0xd429a05a1c)
+round  19  momentum:submitted(0xd050e8d721)  reversion:submitted(0xb187305f69)  spread:submitted(0xe60200c8d9)
+round  20  momentum:submitted(0xe1569a3e1d)  reversion:submitted(0x9d7c725569)  spread:submitted(0xc2d0aaad4d)
+round  21  momentum:submitted(0x9bad8f4ec4)  reversion:submitted(0x02753a7490)  spread:submitted(0x46bd6ab79b)
+round  22  momentum:submitted(0x8b050a2cde)  reversion:submitted(0xc0a153d60f)  spread:submitted(0xe45758e4ee)
+round  23  momentum:submitted(0x8e6dff5c1e)  reversion:submitted(0x8cfe30c84f)  spread:submitted(0xce0e8a1147)
+round  24  momentum:submitted(0x5e2462e9ff)  reversion:refused-preflight(DOMAIN_RISK_EXCEEDED)  spread:submitted(0x76d8f4cabb)
+round  25  momentum:submitted(0x89054eb50a)  reversion:submitted(0x47afc74dda)  spread:submitted(0x9064536b3d)
+round  26  momentum:refused-preflight(DOMAIN_RISK_EXCEEDED)  reversion:refused-preflight(DOMAIN_RISK_EXCEEDED)  spread:refused-preflight(DOMAIN_RISK_EXCEEDED)
+round  27  momentum:refused-preflight(DOMAIN_RISK_EXCEEDED)  reversion:refused-preflight(DOMAIN_RISK_EXCEEDED)  spread:refused-preflight(DOMAIN_RISK_EXCEEDED)
+round  28  momentum:refused-preflight(DOMAIN_RISK_EXCEEDED)  reversion:refused-preflight(PRICE_OUTSIDE_POLICY)  spread:refused-preflight(DOMAIN_RISK_EXCEEDED)
+round  29  momentum:refused-preflight(DOMAIN_RISK_EXCEEDED)  reversion:refused-preflight(DOMAIN_RISK_EXCEEDED)  spread:refused-preflight(DOMAIN_RISK_EXCEEDED)
+round  30  momentum:refused-preflight(DOMAIN_RISK_EXCEEDED)  reversion:refused-preflight(PRICE_OUTSIDE_POLICY)  spread:refused-preflight(DOMAIN_RISK_EXCEEDED)
+
+outcomes: {"no-signal":23,"no-market":12,"submitted":32,"refused-preflight":23}
+submitted: 32
+refused on chain: 0
+refused preflight: 23
+wrote evidence/production/campaign-run.json
