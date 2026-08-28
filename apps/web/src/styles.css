@@ -899,3 +899,275 @@ textarea.input {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* ------------------------------------------------------- system diagrams */
+
+/*
+ * Editorial diagrams, not decoration. They scale with their column and take
+ * their type and colour from the same tokens as everything else, so there is
+ * one visual system on the page rather than two.
+ */
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  /*
+   * SVG text scales with the canvas, so an unconstrained diagram in a 1200px
+   * column renders its labels at 22px — larger than the body copy beside it.
+   * Capping the width holds the diagram's type near its designed size and
+   * centres it, which reads as editorial rather than stretched.
+   */
+  max-width: 840px;
+  margin-inline: auto;
+}
+
+/* The hero diagram is already bounded by its grid column. */
+.hero-figure .diagram {
+  max-width: none;
+}
+
+.diagram text {
+  font-family: var(--font);
+  letter-spacing: -0.2px;
+}
+
+/* A node's name: the thing you read first. */
+.diagram .d-node {
+  font-size: 15px;
+  font-weight: 500;
+  fill: var(--carbon);
+}
+
+/* Qualifying detail, deliberately quieter than the node it belongs to. */
+.diagram .d-sub {
+  font-size: 12px;
+  font-weight: 400;
+  fill: var(--graphite);
+}
+
+/* Structural annotation: envelope, ceiling, state. */
+.diagram .d-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  fill: var(--ash);
+}
+
+.diagram .d-mono {
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--lavender);
+  font-variant-numeric: tabular-nums;
+}
+
+.diagram .d-eq {
+  font-size: 14px;
+  font-weight: 500;
+  fill: var(--graphite);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * One animation on the whole page, on the hero's admitted paths only.
+ * It shows direction of travel; anything more would be motion for its own sake.
+ * The global reduced-motion rule neutralises it.
+ */
+.diagram .d-flow {
+  stroke-dasharray: 4 8;
+  animation: d-flow 1.6s linear infinite;
+}
+@keyframes d-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+/* A figure and its one-line explanation. */
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s16);
+}
+.figure-note {
+  font-size: var(--text-caption);
+  color: var(--ash);
+  line-height: 1.6;
+  max-width: 62ch;
+}
+
+/* ------------------------------------------------------- intent pipeline */
+
+/*
+ * Six stages, as flow layout rather than a fixed-ratio SVG: on a phone this
+ * wraps to two columns instead of shrinking its type to nothing.
+ */
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s12);
+  counter-reset: none;
+}
+
+.pipeline-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--s16) var(--s12) var(--s16);
+  background: var(--paper);
+  border: 1px solid var(--fog);
+  border-radius: var(--r-card);
+}
+
+/* The connector between stages. Drawn on the gap, not inside the card. */
+.pipeline-step::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: calc(var(--s12) * -1);
+  width: var(--s12);
+  height: 1px;
+  background: var(--fog);
+}
+.pipeline-step:last-child::after {
+  display: none;
+}
+
+.pipeline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ash);
+}
+.pipeline-agent .pipeline-dot {
+  background: var(--lavender);
+}
+.pipeline-envelope .pipeline-dot {
+  background: var(--iris);
+}
+.pipeline-venue .pipeline-dot {
+  background: var(--sky);
+}
+.pipeline-proof .pipeline-dot {
+  background: var(--mint);
+}
+
+.pipeline-n {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--ash);
+  font-variant-numeric: tabular-nums;
+}
+.pipeline-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--carbon);
+  line-height: 1.35;
+}
+.pipeline-sub {
+  font-size: var(--text-caption);
+  color: var(--graphite);
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 900px) {
+  .pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Horizontal connectors are wrong once the row wraps. */
+  .pipeline-step::after {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .pipeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /*
+   * The hero diagram is simple enough to shrink. Its labels are bumped so they
+   * survive the reduction rather than disappearing into it.
+   */
+  .hero-figure .diagram .d-node {
+    font-size: 18px;
+  }
+  .hero-figure .diagram .d-sub {
+    font-size: 15px;
+  }
+  .hero-figure .diagram .d-label {
+    font-size: 14px;
+  }
+}
+
+/*
+ * The four wide diagrams cannot shrink to a phone.
+ *
+ * At 278px a 716-unit canvas puts its labels at about 6px, which is a diagram
+ * that exists without being readable — worse than no diagram. So below the
+ * breakpoint they hold a legible minimum width and the figure pans instead.
+ * The reader loses "see it all at once" and keeps "can actually read it", which
+ * is the right trade for a technical illustration.
+ */
+@media (max-width: 760px) {
+  .figure-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /*
+     * Stays inside the page gutter. A negative-margin bleed looked better and
+     * pushed the document 8px wider than the viewport, which is a worse bug
+     * than a diagram that starts at the text margin.
+     */
+    border-radius: var(--r-card);
+  }
+  .figure-scroll .diagram {
+    min-width: 660px;
+  }
+}
+
+/* ------------------------------------------------------------------ hero */
+
+/*
+ * Copy left, mechanism right. The headline can carry the page on its own, but
+ * the diagram is what makes the claim legible before anyone reads a word.
+ */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
+  align-items: center;
+  gap: var(--s64);
+  padding-block: 72px 64px;
+}
+.hero-copy,
+.hero-figure {
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s48);
+    padding-block: 56px 48px;
+  }
+  /* On a phone the diagram is support, so the copy leads. */
+  .hero-figure {
+    order: 2;
+  }
+}
+
+/* --------------------------------------------------------- closing call */
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s32);
+  flex-wrap: wrap;
+  padding: var(--s48);
+}
