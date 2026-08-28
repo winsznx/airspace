@@ -1,5 +1,5 @@
 import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
-import { ConnectButton, NetworkGuard } from "./wallet";
+import { NetworkGuard } from "./wallet";
 import { Landing } from "./routes/landing";
 import { Portfolios } from "./routes/portfolios";
 import { CreatePortfolio } from "./routes/create";
@@ -10,25 +10,7 @@ import { PositionsPage } from "./routes/positions";
 import { RecoveryPage } from "./routes/recovery";
 import { SettingsPage } from "./routes/settings";
 import { NavLinkTab } from "./components/ui";
-
-function TopBar() {
-  return (
-    <header className="topbar">
-      <div className="topbar-inner">
-        <Link to="/" className="brand">
-          <span className="brand-mark" aria-hidden />
-          AIRSPACE
-        </Link>
-        <div className="row">
-          <Link to="/app" className="btn btn-ghost btn-sm topbar-nav-link">
-            Portfolios
-          </Link>
-          <ConnectButton />
-        </div>
-      </div>
-    </header>
-  );
-}
+import { IslandHeader } from "./components/island";
 
 function PortfolioTabs() {
   const { address = "" } = useParams();
@@ -72,7 +54,7 @@ function PortfolioShell({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <>
-      <TopBar />
+      <IslandHeader />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/app" element={<Portfolios />} />

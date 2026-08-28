@@ -578,44 +578,11 @@ td.strong {
 
 /* ------------------------------------------------------------- app shell */
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: saturate(1.4) blur(10px);
-  border-bottom: 1px solid var(--fog);
-}
-.topbar-inner {
-  max-width: var(--page);
-  margin: 0 auto;
-  padding: var(--s12) var(--s24);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s16);
-}
 /*
- * Connected, this bar wants brand + Portfolios + chain pill + address: about
- * 520px inside a 390px viewport. The brand already links home and the hero has
- * its own call to action, so Portfolios is the redundant one, and the chain
- * name collapses to its status dot.
+ * The old sticky header lived here. It is replaced by the island in
+ * components/island.tsx, which carries the same leading/trailing structure plus
+ * a live-activity area. Its rules are gone rather than left behind commented.
  */
-@media (max-width: 640px) {
-  .topbar-inner {
-    padding: var(--s12) var(--s16);
-    gap: var(--s8);
-  }
-  .topbar-nav-link {
-    display: none;
-  }
-  .chain-pill {
-    padding-inline: 10px;
-  }
-  .chain-pill .chain-name {
-    display: none;
-  }
-}
 
 .brand {
   display: inline-flex;
@@ -659,6 +626,30 @@ td.strong {
   overflow-x: auto;
   border-bottom: 1px solid var(--fog);
   scrollbar-width: none;
+  /*
+   * Six tabs need about 525px and a phone has 390. They scroll, but with the
+   * scrollbar hidden nothing said so. This fades the trailing edge only while
+   * there is more to reach, so the affordance appears exactly when it is true.
+   */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  animation: tabs-mask linear;
+  animation-timeline: --tabs-scroll;
+  scroll-timeline: --tabs-scroll x;
+}
+/* At the end of the scroll there is nothing further, so the fade is removed. */
+@keyframes tabs-mask {
+  to {
+    mask-image: linear-gradient(to right, #000 100%, #000);
+    -webkit-mask-image: linear-gradient(to right, #000 100%, #000);
+  }
+}
+/* Where scroll-driven animation is unsupported, the static fade is still right
+   far more often than not: the bar overflows on every phone width. */
+@supports not (animation-timeline: scroll()) {
+  .tabs {
+    animation: none;
+  }
 }
 .tabs::-webkit-scrollbar {
   display: none;
@@ -1290,5 +1281,322 @@ textarea.input {
   }
   to {
     width: var(--proposed-w);
+  }
+}
+
+/* ==================================================================
+   THE ISLAND HEADER
+   ================================================================== */
+
+/*
+ * A real spring, not a bezier pretending to be one.
+ *
+ * Framer Motion spring(stiffness 400, damping 30, mass 1) is what the Dynamic
+ * Island recreations converge on. Solved and sampled into a CSS linear() curve:
+ * 2.8% overshoot, settled at 333ms, and no animation library.
+ */
+:root {
+  --spring: linear(
+    0, 0.0335, 0.1162, 0.2262, 0.3471, 0.4678, 0.5808, 0.6815, 0.7679, 0.8394,
+    0.8966, 0.9408, 0.9736, 0.9969, 1.0125, 1.022, 1.0268, 1.0284, 1.0276,
+    1.0254, 1.0223, 1.0189, 1.0154, 1.0122, 1.0093
+  );
+  --spring-ms: 460ms;
+}
+
+.island-dock {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s12) var(--s16) 0;
+  /* The dock spans the page so the island can centre in it; only the island
+     itself takes pointer events, so the strip beside it stays inert. */
+  pointer-events: none;
+}
+.island-dock > * {
+  pointer-events: auto;
+}
+
+/*
+ * Apple's compact presentation is a LEADING and a TRAILING side that must read
+ * as one thing. Same structure: brand leads, wallet trails, activity between.
+ */
+.island {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s16);
+  max-width: min(100%, var(--page));
+  padding: var(--s8) var(--s8) var(--s8) var(--s16);
+
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(1.8) blur(18px);
+  -webkit-backdrop-filter: saturate(1.8) blur(18px);
+  border: 1px solid var(--fog);
+  /* A large radius on a short box reads as the squircle without the clip-path
+     cost. The pill is already this product's signature shape. */
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-panel);
+
+  transition:
+    padding var(--spring-ms) var(--spring),
+    gap var(--spring-ms) var(--spring),
+    box-shadow 240ms ease,
+    background 240ms ease;
+  will-change: padding, gap;
+}
+
+/* Contracted: the island pulls in on itself as you scroll away from the top. */
+.island[data-state="compact"] {
+  gap: var(--s8);
+  padding-left: var(--s12);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+/* ------------------------------------------------------------- leading */
+
+.island-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s8);
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--carbon);
+  white-space: nowrap;
+}
+.island-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--lavender);
+  flex: none;
+  position: relative;
+}
+.island-mark::before {
+  content: "";
+  position: absolute;
+  inset: 6px 6px auto auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+/*
+ * The wordmark is the first thing to go when space is short. The mark alone
+ * still identifies the product, which is the whole reason a mark exists.
+ */
+.island-word {
+  max-width: 8em;
+  overflow: hidden;
+  transition:
+    max-width var(--spring-ms) var(--spring),
+    opacity 200ms ease;
+}
+.island[data-state="compact"] .island-word {
+  max-width: 0;
+  opacity: 0;
+}
+
+/* ------------------------------------------------------- activity area */
+
+.island-core {
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/*
+ * Entering content scales up from 0.9 and fades in; that is the crossfade the
+ * Dynamic Island uses while its container is still morphing, so the shape and
+ * the content never appear to move as one rigid block.
+ */
+.island-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s8);
+  min-width: 0;
+  animation: island-in 320ms var(--spring) both;
+}
+@keyframes island-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* Usage against ceiling, as a bar you can read at a glance. */
+.island-ring {
+  width: 44px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  overflow: hidden;
+  flex: none;
+}
+.island-ring-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--lavender);
+  transition: width var(--spring-ms) var(--spring);
+}
+.island[data-tone="tight"] .island-ring-fill {
+  background: var(--amber);
+}
+.island[data-tone="over"] .island-ring-fill {
+  background: var(--ember);
+}
+
+.island-figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--carbon);
+  white-space: nowrap;
+}
+.island-slash {
+  color: var(--ash);
+}
+.island-caption {
+  font-size: var(--text-caption);
+  color: var(--ash);
+  white-space: nowrap;
+  max-width: 10em;
+  overflow: hidden;
+  transition:
+    max-width var(--spring-ms) var(--spring),
+    opacity 200ms ease;
+}
+.island[data-state="compact"] .island-caption {
+  max-width: 0;
+  opacity: 0;
+}
+.island[data-tone="over"] .island-caption {
+  color: var(--ember);
+}
+
+/* ------------------------------------------------------------ trailing */
+
+.island-trail {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s8);
+}
+.island-back {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+.island-back:hover {
+  background: var(--mist);
+}
+.island-back-icon {
+  display: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ---------------------------------------------------- expanded detail */
+
+/*
+ * The expanded presentation, hung under the pill. Present only when there IS a
+ * live activity and the reader is at the top — it is detail, not chrome.
+ */
+.island-sheet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s12);
+  padding: 6px 16px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(1.8) blur(18px);
+  -webkit-backdrop-filter: saturate(1.8) blur(18px);
+  border: 1px solid var(--fog);
+  font-size: var(--text-caption);
+  color: var(--graphite);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  animation: island-sheet-in 380ms var(--spring) both;
+}
+@keyframes island-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.island-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--fog);
+  flex: none;
+}
+
+/* --------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .island-dock {
+    padding-inline: var(--s8);
+  }
+  .island {
+    gap: var(--s8);
+    padding-left: var(--s12);
+    width: 100%;
+  }
+  /* The wordmark and the caption are the two things a phone cannot afford. */
+  .island-word,
+  .island-caption {
+    max-width: 0;
+    opacity: 0;
+  }
+  .island-back-word {
+    display: none;
+  }
+  .island-back-icon {
+    display: inline;
+  }
+  .island-back {
+    padding-inline: 10px;
+  }
+  .island-sheet {
+    display: none;
+  }
+}
+
+/*
+ * The morph is emphasis, not information. Without it every state still renders
+ * at its correct size, so nothing is lost by removing the movement.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .island,
+  .island-word,
+  .island-caption,
+  .island-ring-fill {
+    transition: none;
+  }
+  .island-activity,
+  .island-sheet {
+    animation: none;
   }
 }
