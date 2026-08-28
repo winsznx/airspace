@@ -56,6 +56,17 @@ owner-callable; `releaseOrder(key)` is permissionless. Outcome tokens come out w
 > Uncertainty may **overstate** portfolio usage. It may never **understate**
 > maximum commitment.
 
+> [!WARNING]
+> **This invariant is currently violated.** Unfilled reservations on opposing
+> sides of one market cancel each other in `_directional`, so `domainRiskUsage`
+> can report far below true maximum commitment. Measured live: the contract
+> reported 820 where the worst case was 2,480, against a ceiling of 500, and 42
+> intents were admitted while over. The deployed contract still has this.
+> Full decomposition and the fix in
+> [evidence/production/CRITICAL-reservation-netting.md](evidence/production/CRITICAL-reservation-netting.md).
+> Everything below describes the intended design, which the rest of the system
+> does follow.
+
 Every ambiguity resolves in that direction:
 
 - A reservation counts from the moment it is admitted, not when it fills.

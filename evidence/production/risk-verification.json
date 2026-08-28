@@ -1,0 +1,58 @@
+{
+  "finding": "CRITICAL: opposing unfilled reservations net against each other in _directional, so domainRiskUsage can understate maximum commitment.",
+  "status": "OPEN \u2014 not fixed, deployed contract still has it",
+  "portfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "domain": "0xecad341196fc789ff26611e774c63542fba1a40e8bec10e253bcfe7fb7c5f784",
+  "ceilingContracts": 500,
+  "ceilingChangedDuringWindow": false,
+  "samples": [
+    {
+      "block": "473455000",
+      "ceiling": "500000000",
+      "reported": "820000000",
+      "worst": "2480000000",
+      "realized": "1000000000"
+    },
+    {
+      "block": "473458000",
+      "ceiling": "500000000",
+      "reported": "1000000000",
+      "worst": "2320000000",
+      "realized": "1000000000"
+    },
+    {
+      "block": "473461234",
+      "ceiling": "500000000",
+      "reported": "1120000000",
+      "worst": "1160000000",
+      "realized": "1000000000"
+    }
+  ],
+  "peakUnderstatementContracts": 1660,
+  "realizedPeakContracts": 1000,
+  "admissions": {
+    "onDomain": 67,
+    "whileTrueWorstCaseOverCeiling": 42,
+    "firstBreach": {
+      "block": 473413080,
+      "tx": "0x2f4edce9353003c42c89531a049e5de729121c2ac626f0a81e49ae8ec9cfd7f2",
+      "contractSaw": 530,
+      "trueWorstCase": 1280,
+      "realizedOnly": 620
+    }
+  },
+  "whyTestsMissedIt": [
+    "invariant handler hard-codes kind: 0, so noLong is always zero and the opposing-reservation case is unreachable",
+    "invariant_domainUsageNeverExceedsCeiling asserts domainRiskUsage <= CEILING, which checks the number under test against itself and cannot detect an understatement"
+  ],
+  "notImplicated": [
+    "owner recovery",
+    "agents cannot move capital",
+    "reconciliation liveness (verified, converges)"
+  ],
+  "unverified": [
+    "collateral accounting: committedCapital / reservedCollateral / freeCollateral"
+  ],
+  "verifier": "scripts/risk-verifier.mjs",
+  "writeup": "evidence/production/CRITICAL-reservation-netting.md"
+}

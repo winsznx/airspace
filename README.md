@@ -118,6 +118,14 @@ Everything resolves toward one invariant:
 > Uncertainty may **overstate** portfolio usage. It may never **understate**
 > maximum commitment.
 
+**That invariant is currently broken, and the deployed contract has the defect.**
+Unfilled reservations on opposing sides of one market cancel in the exposure
+formula, so a ceiling did not bound worst-case exposure for a portfolio resting
+orders on both sides. It was found by building an independent verifier rather
+than by any test. The measurement, the causal chain, why 48 tests missed it, and
+the fix are in
+[evidence/production/CRITICAL-reservation-netting.md](evidence/production/CRITICAL-reservation-netting.md).
+
 ---
 
 ## Repository

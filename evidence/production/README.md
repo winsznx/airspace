@@ -16,6 +16,8 @@ is a mock.
 | [`numeric-precision.json`](numeric-precision.json) | found in production | A projection defect, its blast radius, and the proof the fix is right |
 | [`lifecycle-bookkeeping.json`](lifecycle-bookkeeping.json) | found in production | Three queue-bookkeeping defects that only appear under real batched load |
 | [`steady-state.json`](steady-state.json) | observed live | The deployed system running unattended, and the full loop closing |
+| [**`CRITICAL-reservation-netting.md`**](CRITICAL-reservation-netting.md) | `scripts/risk-verifier.mjs` | **An open safety-invariant failure. Read this before trusting any ceiling number.** |
+| [`risk-verification.json`](risk-verification.json) | `scripts/risk-verifier.mjs` | The raw measurements behind it |
 
 ---
 
