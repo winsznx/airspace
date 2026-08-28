@@ -15,6 +15,7 @@ is a mock.
 | [`deployment.json`](deployment.json) | recorded at deploy | Every deployed component, its trigger and its secret NAMES |
 | [`numeric-precision.json`](numeric-precision.json) | found in production | A projection defect, its blast radius, and the proof the fix is right |
 | [`lifecycle-bookkeeping.json`](lifecycle-bookkeeping.json) | found in production | Three queue-bookkeeping defects that only appear under real batched load |
+| [`steady-state.json`](steady-state.json) | observed live | The deployed system running unattended, and the full loop closing |
 
 ---
 
@@ -96,6 +97,29 @@ The release work itself was fine throughout: reserved collateral fell from
 1,474,360,000 to 68,380,000 while the bookkeeping was wrong about all of it.
 That gap between "the chain is correct" and "our record of it is correct" is the
 whole reason the contract never reads a projection.
+
+---
+
+## The loop closing, unattended
+
+`steady-state.json` is a snapshot of the deployed system with nobody driving it.
+Over about ten minutes, with no intervention:
+
+```
+domain usage reaches 1,120,000,000 against a 500,000,000 ceiling
+  — realized positions in markets that had settled
+
+all three agents refused DOMAIN_RISK_EXCEEDED, none of them spending gas
+
+the lifecycle keeper releases 172 orders and 7 settled markets
+
+usage falls to 10,000,000
+
+the agents resume trading on their own; usage climbs back to 240,000,000
+```
+
+Nothing in that sequence was triggered by hand. The envelope tightened, refused
+everything, was cleared by permissionless releases, and reopened.
 
 ---
 
