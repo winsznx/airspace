@@ -296,9 +296,45 @@ async function prunable(client: PublicClient, portfolio: Address, marketId: Mark
 // Job execution
 // ---------------------------------------------------------------------------
 
+/**
+ * One keeper key sends every job, so the nonce has to be sequenced here.
+ *
+ * A queue batch delivers several messages at once. Letting each write derive its
+ * own nonce means two jobs in the same batch both read the same pending count
+ * and the second is rejected: "Nonce provided for the transaction is lower than
+ * the current nonce." Measured in production — the keeper landed some releases
+ * and lost the rest of every batch that way.
+ *
+ * The nonce is read once per batch and handed out in order. It is reset on any
+ * send failure so the next batch re-reads it rather than compounding a bad
+ * guess.
+ */
+class NonceSequence {
+  private next: bigint | null = null;
+
+  constructor(
+    private readonly client: PublicClient,
+    private readonly address: `0x${string}`,
+  ) {}
+
+  async take(): Promise<number> {
+    if (this.next === null) {
+      this.next = BigInt(await this.client.getTransactionCount({ address: this.address, blockTag: "pending" }));
+    }
+    const n = this.next;
+    this.next += 1n;
+    return Number(n);
+  }
+
+  reset(): void {
+    this.next = null;
+  }
+}
+
 async function runJob(
   env: Env,
   job: Job,
+  nonces?: NonceSequence,
 ): Promise<{ done: boolean; note: string; txHash?: string; suspect?: boolean }> {
   const k = keeper(env);
   if (!k) return { done: false, note: "no keeper key configured; job planned but not sent" };
@@ -326,7 +362,8 @@ async function runJob(
       args: fn.args as never,
       account: k.account,
     });
-    const txHash = await k.wallet.writeContract(request);
+    const nonce = nonces ? await nonces.take() : undefined;
+    const txHash = await k.wallet.writeContract(nonce === undefined ? request : { ...request, nonce });
     await client.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
     return { done: true, note: `${fn.name} sent`, txHash };
   } catch (e) {
@@ -370,22 +407,38 @@ export default {
   async queue(batch: MessageBatch<Job>, env: Env): Promise<void> {
     const db = createServiceDb(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
+    /**
+     * Address exactly the one job row this message came from.
+     *
+     * `.eq(col, null)` builds `col=eq.null`, which matches nothing in SQL —
+     * NULL is not equal to anything, including NULL. A `release-settled` job has
+     * no `order_key` and a `sync-portfolio` job has neither, so every status
+     * update for those silently updated ZERO rows and the queue table filled
+     * with jobs stuck at PENDING that had already run.
+     */
+    const addressJob = (q: ReturnType<ReturnType<typeof db.from>["update"]>, job: Job) => {
+      let out = q.eq("chain_id", job.chainId).eq("kind", job.kind);
+      out = job.orderKey ? out.eq("order_key", job.orderKey) : out.is("order_key", null);
+      out = job.marketId ? out.eq("market_id", job.marketId) : out.is("market_id", null);
+      return out;
+    };
+    const k = keeper(env);
+    const nonces = k ? new NonceSequence(pub(env), k.account.address) : undefined;
+
+    // Sequential on purpose. These sends share one key, and the chain, not this
+    // loop, is the bottleneck.
     for (const msg of batch.messages) {
       const job = msg.body;
       try {
-        const result = await runJob(env, job);
-        await db
-          .from("reconciliation_jobs")
-          .update({
+        const result = await runJob(env, job, nonces);
+        await addressJob(
+          db.from("reconciliation_jobs").update({
             status: result.done ? "DONE" : "PENDING",
             last_error: result.done ? null : result.note,
             updated_at: new Date().toISOString(),
-          })
-          .eq("chain_id", job.chainId)
-          .eq("kind", job.kind)
-          .eq("order_key", job.orderKey ?? null)
-          .eq("market_id", job.marketId ?? null)
-          .in("status", ["PENDING", "RUNNING"]);
+          }),
+          job,
+        ).in("status", ["PENDING", "RUNNING"]);
 
         // A suspect release leaves the reservation visibly broken rather than
         // quietly gone, so an operator can see there is a projection to rebuild.
@@ -403,12 +456,22 @@ export default {
         // the message to the DLQ once max_retries is exhausted, so a poisoned
         // job cannot spin forever.
         const attempts = msg.attempts;
+        // The sequence may now be ahead of the chain, so drop it and let the
+        // next job re-read the real pending nonce.
+        nonces?.reset();
         console.error(JSON.stringify({ at: "job", kind: job.kind, attempts, error: String(e) }));
-        await db
-          .from("reconciliation_jobs")
-          .update({ status: "FAILED", attempt_count: attempts, last_error: String(e).slice(0, 500) })
-          .eq("chain_id", job.chainId)
-          .eq("kind", job.kind);
+        // Scoped to THIS job. The previous version matched on chain and kind
+        // alone, so one failure marked every release-order job on the chain as
+        // FAILED — 281 rows, from a handful of real failures.
+        await addressJob(
+          db.from("reconciliation_jobs").update({
+            status: "FAILED",
+            attempt_count: attempts,
+            last_error: String(e).slice(0, 500),
+            updated_at: new Date().toISOString(),
+          }),
+          job,
+        );
         msg.retry({ delaySeconds: Math.min(2 ** attempts * 5, 300) });
       }
     }

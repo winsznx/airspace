@@ -303,3 +303,26 @@ The repair itself is the argument for the projection design: the reservation
 rows were deleted, the cursor rewound, and the indexer rebuilt them from chain
 logs. No state was reconstructed by hand, and nothing authoritative was ever at
 risk.
+
+---
+
+## 15. One keeper key, so the lifecycle worker sequences its own nonces
+
+**Decision.** The queue consumer reads the pending nonce once per batch and hands
+it out in order, `max_concurrency = 1`, and the sequence is dropped on any send
+failure.
+
+**Why.** A queue batch delivers up to ten jobs at once. Letting each write derive
+its own nonce means two jobs in one batch both read the same pending count, and
+the chain rejects the second: *"Nonce provided for the transaction is lower than
+the current nonce."* Measured in production — the keeper landed some releases and
+lost the rest of every batch that way, while reporting them as ordinary failures.
+
+The alternative is a keeper key per queue partition, which buys parallelism this
+workload does not need: releases are not latency-sensitive, and the chain is the
+bottleneck rather than the loop.
+
+**What this is not.** The keeper has no authority. `releaseOrder`,
+`releaseSettled` and `pruneMarket` are permissionless and prove their claim
+against the venue, so the key needs gas and nothing else. It cannot move capital,
+change a policy or trade.

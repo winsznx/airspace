@@ -16,6 +16,10 @@ queue = "airspace-reconcile"
 [[queues.consumers]]
 queue = "airspace-reconcile"
 max_batch_size = 10
+# One keeper key signs every job, so batches must not run in parallel: two
+# concurrent invocations would each sequence nonces from the same starting
+# point and one would always be rejected.
+max_concurrency = 1
 max_batch_timeout = 5
 max_retries = 5
 dead_letter_queue = "airspace-reconcile-dlq"

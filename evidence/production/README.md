@@ -14,6 +14,7 @@ is a mock.
 | [`scale.json`](scale.json) | `scripts/scale.mjs` | Read path at 100 portfolios / 1,000 agents / 10,000 intents |
 | [`deployment.json`](deployment.json) | recorded at deploy | Every deployed component, its trigger and its secret NAMES |
 | [`numeric-precision.json`](numeric-precision.json) | found in production | A projection defect, its blast radius, and the proof the fix is right |
+| [`lifecycle-bookkeeping.json`](lifecycle-bookkeeping.json) | found in production | Three queue-bookkeeping defects that only appear under real batched load |
 
 ---
 
@@ -76,6 +77,25 @@ reconstructed by hand.
 The fix is verified against the contract's own output. `ReservationReleased`
 emits the contract's `orderKey`; re-deriving it in TypeScript from the matching
 `IntentAdmitted` log reproduces it exactly.
+
+## The third thing production found
+
+Running the keeper against a real queue surfaced three defects at once, all in
+bookkeeping rather than in the work itself:
+
+- One key signs every job, and a batch delivers ten. Each write derived its own
+  nonce, so the chain rejected the second job in every batch.
+- The status update used `.eq(col, null)`, which builds `col=eq.null`. NULL is
+  not equal to anything in SQL, so every update for a job without an order key
+  matched zero rows — completed work stayed `PENDING`, and the dedupe index then
+  refused to re-enqueue it. 330 rows described jobs that had already run.
+- The failure path scoped its update to chain and kind alone, so one failure
+  marked 281 jobs as `FAILED`.
+
+The release work itself was fine throughout: reserved collateral fell from
+1,474,360,000 to 68,380,000 while the bookkeeping was wrong about all of it.
+That gap between "the chain is correct" and "our record of it is correct" is the
+whole reason the contract never reads a projection.
 
 ---
 

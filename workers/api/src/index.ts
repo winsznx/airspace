@@ -125,11 +125,52 @@ app.get("/api/owners/:owner/portfolios", async (c) => {
   });
 });
 
+/**
+ * Which domains a snapshot should cover.
+ *
+ * The caller supplies the domains of markets that are live RIGHT NOW, which is
+ * what it can see. That set alone is not enough: a domain the owner configured
+ * disappears from it the moment its series rolls, so a ceiling that is still
+ * enforced would vanish from the interface and the owner would reasonably think
+ * their configuration was lost.
+ *
+ * So the requested set is unioned with the domains this portfolio has actually
+ * configured, projected from its own `DomainPolicySet` logs. Nothing here
+ * authorises anything — it only decides what to look up on chain, and every
+ * value in the snapshot is then read from the contract.
+ */
+async function domainsFor(env: Env, address: string, requested: string): Promise<string[]> {
+  const asked = requested.split(",").filter(isBytes32);
+  try {
+    const db = createPublicDb(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+    const { data: pf } = await db
+      .from("portfolios")
+      .select("id")
+      .eq("portfolio_address", address.toLowerCase())
+      .maybeSingle();
+    if (!pf) return asked;
+
+    const { data } = await db
+      .from("domain_policies")
+      .select("domain_hash")
+      .eq("portfolio_id", pf.id)
+      .eq("configured", true);
+
+    const configured = (data ?? []).map((r) => r.domain_hash as string).filter(isBytes32);
+    // Bounded: a snapshot reads every domain on chain, so an unbounded union
+    // would let the projection dictate how much work each request does.
+    return [...new Set([...asked, ...configured])].slice(0, 32);
+  } catch {
+    // The projection is a convenience. Losing it must not break a live read.
+    return asked;
+  }
+}
+
 /** Live portfolio state, via the per-portfolio Durable Object. */
 app.get("/api/portfolios/:address", async (c) => {
   const address = c.req.param("address");
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
-  const domains = c.req.query("domains") ?? "";
+  const domains = (await domainsFor(c.env, address, c.req.query("domains") ?? "")).join(",");
 
   const id = c.env.PORTFOLIO.idFromName(`${chainId(c.env)}:${address.toLowerCase()}`);
   const stub = c.env.PORTFOLIO.get(id);
@@ -146,12 +187,12 @@ app.get("/api/portfolios/:address/stream", async (c) => {
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
   if (c.req.header("Upgrade") !== "websocket") return bad(c, "expected a websocket upgrade", 426);
 
+  const domains = (await domainsFor(c.env, address, c.req.query("domains") ?? "")).join(",");
   const id = c.env.PORTFOLIO.idFromName(`${chainId(c.env)}:${address.toLowerCase()}`);
   const stub = c.env.PORTFOLIO.get(id);
-  return stub.fetch(
-    `https://do/stream?portfolio=${address}&domains=${encodeURIComponent(c.req.query("domains") ?? "")}`,
-    { headers: c.req.raw.headers },
-  );
+  return stub.fetch(`https://do/stream?portfolio=${address}&domains=${encodeURIComponent(domains)}`, {
+    headers: c.req.raw.headers,
+  });
 });
 
 app.get("/api/portfolios/:address/agents", async (c) => {

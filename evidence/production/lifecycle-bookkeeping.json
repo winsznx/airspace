@@ -1,0 +1,34 @@
+{
+  "recordedAt": "2026-08-28T12:15:19.482713Z",
+  "found": "Two defects in the lifecycle worker's queue bookkeeping, both visible only under real batched load.",
+  "defects": [
+    {
+      "id": "nonce-collision",
+      "what": "One keeper key signs every job, and a queue batch delivers up to ten at once. Each write derived its own nonce, so two jobs in a batch read the same pending count and the chain rejected the second.",
+      "evidence": "Nonce provided for the transaction is lower than the current nonce",
+      "impact": "The keeper landed some releases and lost the rest of every batch, while reporting them as ordinary failures.",
+      "fix": "Read the pending nonce once per batch and hand it out in order; max_concurrency = 1; drop the sequence on any send failure so the next batch re-reads the chain."
+    },
+    {
+      "id": "null-scoped-status-update",
+      "what": "The job status update used .eq(col, null), which builds col=eq.null. NULL is not equal to anything in SQL, including NULL.",
+      "impact": "Every status update for a release-settled or sync-portfolio job matched ZERO rows, so completed work stayed PENDING. The dedupe unique index then blocked re-enqueueing that work, and the table filled with 330 rows describing jobs that had already run.",
+      "fix": "Use .is(col, null) when the value is absent."
+    },
+    {
+      "id": "over-broad-failure-update",
+      "what": "The failure path scoped its update to chain_id and kind alone.",
+      "impact": "One failure marked EVERY release-order job on the chain as FAILED. 281 rows, from a handful of real failures.",
+      "fix": "Address exactly the job the message came from."
+    }
+  ],
+  "notAffected": [
+    "the contract, which is what actually enforces anything",
+    "release itself, which is permissionless and provable: reserved collateral fell from 1,474,360,000 to 68,380,000 while the bookkeeping was wrong"
+  ],
+  "keeper": {
+    "address": "0x60536020d9926512dd8F806466431c1e504B29aB",
+    "authority": "none: releaseOrder, releaseSettled and pruneMarket are permissionless and prove their claim against the venue. The key needs gas and nothing else."
+  },
+  "repair": "Stale job rows deleted. The scheduled scan re-plans from chain state, so nothing needed reconstructing."
+}
