@@ -14,6 +14,13 @@ import {AirspacePortfolio} from "./AirspacePortfolio.sol";
 ///      is immutable and a new version means a new factory, because upgrade
 ///      authority over a live portfolio would invalidate the agent-boundary claim
 ///      the whole product rests on (PRD 19.2).
+///
+///      The implementation is deployed SEPARATELY and passed in, rather than
+///      created inside this constructor. Two reasons: Somnia rejects the nested
+///      CREATE (a constructor deploying a ~24KB contract fails on-chain even
+///      though it simulates cleanly), and an independently deployed
+///      implementation can be source-verified on its own before any factory
+///      points at it.
 contract AirspacePortfolioFactory {
     error DeployFailed();
     error AlreadyDeployed();
@@ -37,12 +44,16 @@ contract AirspacePortfolioFactory {
         address indexed portfolio, address indexed owner, bytes32 indexed salt, string version, uint256 index
     );
 
-    constructor(address module_, address outcomeToken_, address collateral_) {
-        if (module_ == address(0) || outcomeToken_ == address(0) || collateral_ == address(0)) revert ZeroAddress();
+    constructor(address implementation_, address module_, address outcomeToken_, address collateral_) {
+        if (
+            implementation_ == address(0) || module_ == address(0) || outcomeToken_ == address(0)
+                || collateral_ == address(0)
+        ) revert ZeroAddress();
+        if (implementation_.code.length == 0) revert ZeroAddress();
+        implementation = implementation_;
         module = module_;
         outcomeToken = outcomeToken_;
         collateral = collateral_;
-        implementation = address(new AirspacePortfolio());
     }
 
     /// @notice Deploy a portfolio for `owner_` at a deterministic address.

@@ -1,0 +1,25 @@
+{
+  "chainId": 50312,
+  "network": "Somnia Shannon",
+  "version": "1.0.0",
+  "deployedAtBlock": 473372851,
+  "deployedAt": "2026-08-28T09:44:16Z",
+  "deployer": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
+  "contracts": {
+    "AirspacePortfolioFactory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
+    "AirspacePortfolio_implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0"
+  },
+  "transactions": {
+    "implementation": "0x5850a4d944b3b5dbee47f7eda798417a6c9cc3e44e96e0487ebbf1b85e1793eb",
+    "factory": "0xcecddcebc74b6c5e3ac3142d79e26af14307d7b79710fb9249bfec0ff7988e17"
+  },
+  "dreamdex": {
+    "binaryModule": "0x3ecC694Cef705358864a646142ac17A90E29e388",
+    "outcomeToken6909": "0xB52c5934113Af5c0Bb20eb3C72290C8215f755b9",
+    "collateral": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+    "collateralSymbol": "tUSDC",
+    "collateralDecimals": 6
+  },
+  "explorer": "https://shannon-explorer.somnia.network",
+  "notes": "Implementation deployed separately from the factory: Somnia rejects a constructor that itself deploys a ~24KB contract, even though it simulates cleanly. See DECISIONS.md."
+}

@@ -62,7 +62,7 @@ contract ShannonForkTest is Test {
         m1 = _load(bytes32(vm.envUint("MKT_1")));
         m2 = _load(bytes32(vm.envUint("MKT_2")));
 
-        factory = new AirspacePortfolioFactory(MODULE, OUTCOME, TUSDC);
+        factory = new AirspacePortfolioFactory(address(new AirspacePortfolio()), MODULE, OUTCOME, TUSDC);
         vm.prank(owner);
         pf = AirspacePortfolio(payable(factory.createPortfolio(owner, bytes32(0))));
 

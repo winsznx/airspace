@@ -152,7 +152,7 @@ contract PortfolioInvariantsTest is Test {
         tok = new MockERC20();
         oc = new MockOutcome6909();
         mod = new MockModule();
-        factory = new AirspacePortfolioFactory(address(mod), address(oc), address(tok));
+        factory = new AirspacePortfolioFactory(address(new AirspacePortfolio()), address(mod), address(oc), address(tok));
 
         vm.prank(owner);
         pf = AirspacePortfolio(payable(factory.createPortfolio(owner, bytes32(0))));
