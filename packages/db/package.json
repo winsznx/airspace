@@ -1,0 +1,18 @@
+{
+  "name": "@airspace/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@airspace/types": "workspace:*",
+    "@supabase/supabase-js": "^2.47.10"
+  }
+}
