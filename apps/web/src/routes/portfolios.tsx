@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAccount, useReadContract } from "wagmi";
 import { airspacePortfolioFactoryAbi } from "@airspace/sdk";
 import { useConfig } from "../hooks/config";
-import { ConnectButton, NetworkGuard } from "../wallet";
+import { ConnectButton, NetworkGuard, WalletSupportNote } from "../wallet";
 import { AddressLink, Card, Empty, ErrorState, LoadingCard, Notice } from "../components/ui";
 
 /**
@@ -59,6 +59,7 @@ export function Portfolios() {
           <Empty title="Connect a wallet to continue" action={<ConnectButton />}>
             AIRSPACE reads your portfolios from the factory contract on Somnia Shannon. Nothing is stored
             against your account here.
+            <WalletSupportNote />
           </Empty>
         ) : owned.isLoading ? (
           <LoadingCard rows={3} />

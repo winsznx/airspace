@@ -25,7 +25,8 @@
     "campaign:run": "node scripts/campaign-run.mjs",
     "adversarial": "node scripts/adversarial.mjs",
     "scale": "node scripts/scale.mjs",
-    "verify": "pnpm typecheck && pnpm test && pnpm contracts:test && pnpm abi:check && pnpm secrets:scan"
+    "verify": "pnpm typecheck && pnpm test && pnpm contracts:test && pnpm abi:check && pnpm secrets:scan",
+    "bundle:budget": "node scripts/bundle-budget.mjs"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

@@ -97,6 +97,25 @@ Safe to commit, and already committed:
 - RPC endpoints
 - The Supabase project URL and anon/publishable key — RLS-scoped, read-only on
   chain-derived projections, and designed to ship in a browser bundle
+- The WalletConnect project id — it identifies the dApp to the relay and
+  authorises nothing
+
+### Wallet connection
+
+The app uses RainbowKit, themed from the same tokens as everything else. It
+needs a WalletConnect project id to offer anything beyond browser wallets:
+
+```bash
+# free, from https://cloud.reown.com
+export VITE_WALLETCONNECT_PROJECT_ID=...
+pnpm build
+```
+
+Vite reads it at **build** time, so it has to be set before `pnpm build`, not on
+the Worker. Without it the app still works and RainbowKit still renders, but the
+wallet list drops to the ones that need no relay — an injected provider, Coinbase
+and Safe — and the connect screen says so rather than leaving a dead option on
+screen. There is no QR flow in that mode, so a phone wallet cannot connect.
 
 ### What is secret
 
@@ -173,6 +192,9 @@ Order matters: the API Worker serves the web app's built assets, so build first.
 ```bash
 wrangler login
 
+# The wallet list is baked into the bundle, so this belongs on the BUILD, not
+# on the Worker. Without it the app ships with browser wallets only.
+export VITE_WALLETCONNECT_PROJECT_ID=...
 pnpm build
 
 wrangler deploy -c workers/api/wrangler.toml

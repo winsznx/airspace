@@ -6,7 +6,7 @@ import { airspacePortfolioFactoryAbi } from "@airspace/sdk";
 import { useConfig } from "../hooks/config";
 import { useWrite } from "../hooks/tx";
 import { TxStatus } from "../components/tx";
-import { ConnectButton, NetworkGuard, useIsWrongNetwork } from "../wallet";
+import { ConnectButton, NetworkGuard, WalletSupportNote, useIsWrongNetwork } from "../wallet";
 import { AddressLink, Card, Empty, Notice } from "../components/ui";
 
 /**
@@ -57,6 +57,7 @@ export function CreatePortfolio() {
         <Empty title="Connect a wallet to create a portfolio" action={<ConnectButton />}>
           You will be the owner. Ownership cannot be transferred by AIRSPACE, and no backend key can act
           on your behalf.
+          <WalletSupportNote />
         </Empty>
       </div>
     );

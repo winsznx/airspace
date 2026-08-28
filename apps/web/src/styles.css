@@ -1171,3 +1171,35 @@ textarea.input {
   flex-wrap: wrap;
   padding: var(--s48);
 }
+
+/* ------------------------------------------------------------- wallet */
+
+/* The connected-chain pill. Quiet, but never hidden: this product is
+   chain-specific and a user on the wrong network loses a transaction to it. */
+.chain-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chain-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  flex: none;
+}
+
+/*
+ * RainbowKit's modal, held to AIRSPACE's type.
+ *
+ * The theme object covers colour, radius and shadow. Font weight and tracking
+ * are not theme properties, so they are set here — without this the modal is
+ * the only surface in the product not using our tracking.
+ */
+[data-rk] {
+  --rk-fonts-body: var(--font);
+  letter-spacing: -0.32px;
+}
+[data-rk] button {
+  letter-spacing: -0.32px;
+}

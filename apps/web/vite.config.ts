@@ -15,6 +15,11 @@ export default defineConfig({
           chain: ["viem", "wagmi"],
           react: ["react", "react-dom", "react-router-dom"],
           query: ["@tanstack/react-query"],
+          // Wallet UI changes on RainbowKit's release cadence, not ours, so it
+          // gets its own long-lived chunk instead of being invalidated by every
+          // app edit. Individual wallet SDKs stay lazy — RainbowKit loads them
+          // only when someone picks that wallet.
+          wallet: ["@rainbow-me/rainbowkit"],
         },
       },
     },

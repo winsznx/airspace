@@ -107,12 +107,10 @@ jobs:
       - run: pnpm build
 
       - name: web bundle budget
-        run: |
-          # Each chunk must stay under Vite's 500 kB warning threshold. A single
-          # blob would mean the chain stack is no longer split out.
-          over=$(find apps/web/dist/assets -name '*.js' -size +500k | grep -v '\.map$' || true)
-          if [ -n "$over" ]; then echo "chunk over 500 kB:"; echo "$over"; exit 1; fi
-          ls -la apps/web/dist/assets/*.js | grep -v '\.map'
+        # Gates the initial load, not per-chunk size: the wallet SDKs are large
+        # and lazy on purpose, and failing on their size would push them into
+        # the entry. See scripts/bundle-budget.mjs.
+        run: node scripts/bundle-budget.mjs
 
   clean-room:
     name: clean clone reproduces
