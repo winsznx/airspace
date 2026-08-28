@@ -1,20 +1,25 @@
 {
-  "name": "somnia2",
+  "name": "airspace",
+  "private": true,
   "version": "1.0.0",
-  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib",
-    "test": "test"
+  "description": "One capital pool. Many trading agents. One shared risk envelope.",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm -r --filter './packages/*' build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "contracts:build": "forge build --root contracts",
+    "contracts:test": "forge test --root contracts",
+    "secrets:scan": "node engineering/02-product-lock/research/onchain-probes/secret-scan.mjs .",
+    "abi:sync": "node scripts/sync-abi.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "viem": "^2.56.0"
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.2"
   }
 }

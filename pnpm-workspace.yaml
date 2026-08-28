@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+  - "workers/*"
+
+# esbuild ships prebuilt binaries and needs its install script to run (vitest).
+allowBuilds:
+  esbuild: true
+
+onlyBuiltDependencies:
+  - esbuild
