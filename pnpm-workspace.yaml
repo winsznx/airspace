@@ -3,9 +3,11 @@ packages:
   - "apps/*"
   - "workers/*"
 
-# esbuild ships prebuilt binaries and needs its install script to run (vitest).
+# esbuild and workerd ship prebuilt binaries and need their install scripts.
 allowBuilds:
   esbuild: true
+  workerd: true
 
 onlyBuiltDependencies:
   - esbuild
+  - workerd

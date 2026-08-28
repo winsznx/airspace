@@ -1,0 +1,26 @@
+{
+  "name": "@airspace/lifecycle",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@airspace/db": "workspace:*",
+    "@airspace/protocol": "workspace:*",
+    "@airspace/risk": "workspace:*",
+    "@airspace/sdk": "workspace:*",
+    "@airspace/types": "workspace:*",
+    
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "wrangler": "^4.119.0"
+  }
+}
