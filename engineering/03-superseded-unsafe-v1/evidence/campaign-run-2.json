@@ -1,0 +1,401 @@
+{
+  "rounds": 30,
+  "byOutcome": {
+    "no-signal": 23,
+    "no-market": 12,
+    "submitted": 32,
+    "refused-preflight": 23
+  },
+  "byAgent": {
+    "momentum": {
+      "no-signal": 9,
+      "no-market": 4,
+      "submitted": 10,
+      "refused-preflight": 7
+    },
+    "reversion": {
+      "no-signal": 7,
+      "no-market": 4,
+      "submitted": 11,
+      "refused-preflight": 8
+    },
+    "spread": {
+      "no-signal": 7,
+      "no-market": 4,
+      "submitted": 11,
+      "refused-preflight": 8
+    }
+  },
+  "submitted": [
+    {
+      "strategy": "reversion",
+      "txHash": "0x35658cec875b7532ab0d6a1457e4a15ed5af6b11a9c31d406aa37b5c411eb31b",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x3b1d59add3e3fffa804fad4a155420ed359a2a0de848d23d1dc6c08e7c0d7001",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x3f76af8626995f52d119bfc48e9f49bdb6dcefdc52d42ddb6ea67e353993a5bf",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x9f1e4d29c107a880b1a764a82a505a459c5cd96863e88d507fdf26103e8813b8",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x87181f176109559a31526e42f37959c0389f2858ff62aea6207e61f23edac29f",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0xc999f448d4e178b8d10d85afdb0a7c90c6b029cc4718348ba63fdc18a41edef9",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x9e16294586c3665c474dfc491a36efcf5a9b7c9f417249a1edbcb0e8cf3d1210",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0xce96c9764616087abea6af4f72fb4a8d1198b5e33cb54dc4856b1924b668f2fc",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x0573b25bb8b77f97436125d9aeef37333c252c10b2aed1ad4921cadbd8b3c6c4",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x813e69d6afe423f0170228486e73bba8929772c000e08f8837d457abd0c6ba08",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x599ef82fd79da227187607cfc48be9672588eb42a4bbd026aa2f905ec9e4817f",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0xd429a05a1c19171292cf3ad548d78d9c11847b3cc9346256a7c9ebf41263c2bf",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0xd050e8d721da93aaad83eb4b127455f26a8f1b0377f8c353e7610afcd8dc2c6c",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0xb187305f69228c85821f42572e9293e40d845e8f8fac1cbf26768b976e2d2144",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0xe60200c8d9ceaabd5d6b4063b9ca77843c2db7ba83137ac5761793005a30cace",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0xe1569a3e1d3f52a2d8534a6936fb2546ce0fda5c760deaa21ca6237afb18f100",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x9d7c72556912f8477521495b75f41a9948747f887e9d91b14392144cc2bb1bcf",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0xc2d0aaad4db88daa4dc01b5e231c282d743f2f8c4125806d5bce77376a8d8784",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x9bad8f4ec46eff8d7b818c57068cbfd16685046820cdcf46b9d26853e1d6bfc6",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x02753a7490e1a964a034d986dd1c8c44910ddbcb1f06d78f536dc6bf2a3ac52c",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x46bd6ab79b86d91cbd21bcc357fec9b4d21b5be3a5119c83576cd5758342a61f",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x8b050a2cdeaf27ffc82c6bbac4a6f04c11c111c29d29184ef684642e8782f395",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0xc0a153d60f2f8ca29ac3447e1849721263be7f52262988a6c924bd61ba4daf94",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0xe45758e4ee0c221ad727c993875e0359bb95f3986c61b02d663a08553f130a38",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x8e6dff5c1e3f93d96e0ed665191b8ccc499cbb89504404f15229be1e341bf386",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x8cfe30c84fa3accda42603f5be6763a223de1ee3f25cc83b1c9f595bfaae668e",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0xce0e8a1147b867f378ea720a31d8c9cbc124102c44292daed0c199bc9c7ce7a8",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x5e2462e9ffeef4e975c94022de5a69690bbe8d410bbe3340dcce2839f6a13181",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x76d8f4cabb7c9f5463689504e7847310027b89e224bbb1d555e5a0093f6cbb22",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "txHash": "0x89054eb50acbf9b9a55689771fb7a75696a698d897bdfacda75c4e272ba37bfe",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "txHash": "0x47afc74dda3b5472d3b0d89df65856fb5a303ffa511a6c2f64ff96ad7237e670",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "txHash": "0x9064536b3dc05241478b40e0617f2d28dd0fa9a258a0c21ad174b031b0ab1671",
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    }
+  ],
+  "refusedOnChain": [],
+  "refusedPreflight": [
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 23,
+        "name": "DOMAIN_COMMITTED_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 14,
+        "name": "PRICE_OUTSIDE_POLICY",
+        "blockingGate": "price"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "momentum",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "reversion",
+      "refusal": {
+        "code": 14,
+        "name": "PRICE_OUTSIDE_POLICY",
+        "blockingGate": "price"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    },
+    {
+      "strategy": "spread",
+      "refusal": {
+        "code": 22,
+        "name": "DOMAIN_RISK_EXCEEDED",
+        "blockingGate": "portfolio"
+      },
+      "market": "0x000000000000000000000000000000000000000000000000000000000000bdf4"
+    }
+  ]
+}

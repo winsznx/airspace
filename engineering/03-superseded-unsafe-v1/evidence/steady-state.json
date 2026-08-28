@@ -1,0 +1,68 @@
+{
+  "observedAt": "2026-08-28T12:20:08.090Z",
+  "note": "A snapshot of the deployed system running unattended: cron agents trading, the indexer projecting, the lifecycle keeper clearing settled exposure.",
+  "api": "https://airspace-api.timjosh507.workers.dev",
+  "portfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "chain": {
+    "blockNumber": "473466305",
+    "capitalBase": "6000000000",
+    "committedCapital": "808390000",
+    "reservedCollateral": "276660000",
+    "domains": [
+      {
+        "domain": "0xb5900073f34dd461c1b743d2d0ef4e0a9577e4cd685117308a557d8c18bf8fb7",
+        "usage": "0",
+        "ceiling": "500000000",
+        "committedCeiling": "1000000000",
+        "liveMarkets": 0,
+        "marketCount": 0,
+        "configured": true
+      },
+      {
+        "domain": "0xecad341196fc789ff26611e774c63542fba1a40e8bec10e253bcfe7fb7c5f784",
+        "usage": "240000000",
+        "ceiling": "500000000",
+        "committedCeiling": "1000000000",
+        "liveMarkets": 1,
+        "marketCount": 4,
+        "configured": true
+      }
+    ]
+  },
+  "projections": {
+    "intents": 85,
+    "receipts": 85,
+    "reservations": 78,
+    "positions": 4,
+    "refused": 3
+  },
+  "agents": {
+    "momentum": {
+      "address": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+      "lastOutcome": "submitted",
+      "at": "2026-08-28T12:19:33.673Z",
+      "refusal": null,
+      "txHash": "0x3d6f61cdc823e5f64fbd52750bb4da7474f105a4203287848869e7e8bf37efaf"
+    },
+    "reversion": {
+      "address": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+      "lastOutcome": "submitted",
+      "at": "2026-08-28T12:19:33.672Z",
+      "refusal": null,
+      "txHash": "0xcb43e03797fe516e21b5684a20d092dbe2b8381cae33ab161fb314318c1c5b61"
+    },
+    "spread": {
+      "address": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20",
+      "lastOutcome": "submitted",
+      "at": "2026-08-28T12:19:33.673Z",
+      "refusal": null,
+      "txHash": "0x3e1c205e23e2759bb09453c2a7c0ff248f92cfb8fbe6e3744643b3df2d64a4a6"
+    }
+  },
+  "loopObserved": [
+    "domain usage reached 1,120,000,000 against a 500,000,000 ceiling from realized positions in settled markets",
+    "all three agents were refused DOMAIN_RISK_EXCEEDED, without spending gas",
+    "the lifecycle keeper released 172 orders and 7 settled markets",
+    "usage fell to 10,000,000 and the agents resumed trading on their own"
+  ]
+}
