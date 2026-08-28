@@ -44,7 +44,7 @@ export function ConnectButton() {
                     and a user on the wrong one loses money to a failed send. */}
                 <button className="btn btn-ghost btn-sm chain-pill" onClick={openChainModal} type="button">
                   <span className="chain-dot" aria-hidden />
-                  {chain.name}
+                  <span className="chain-name">{chain.name}</span>
                 </button>
                 <button className="btn btn-outline btn-sm" onClick={openAccountModal} type="button">
                   {account.displayName}

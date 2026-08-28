@@ -20,7 +20,7 @@ function TopBar() {
           AIRSPACE
         </Link>
         <div className="row">
-          <Link to="/app" className="btn btn-ghost btn-sm">
+          <Link to="/app" className="btn btn-ghost btn-sm topbar-nav-link">
             Portfolios
           </Link>
           <ConnectButton />

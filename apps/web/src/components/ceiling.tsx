@@ -25,6 +25,13 @@ export function CeilingLine({
   proposed,
   decimals = 6,
   showLegend = true,
+  /**
+   * Grow the proposed segment across the ceiling once, instead of rendering it
+   * already crossed. Used on the landing page so the central insight is a
+   * moment rather than a static picture. Off everywhere else: in the control
+   * room the number is live data and must not be animated into place.
+   */
+  animateProposed = false,
 }: {
   segments: Segment[];
   ceiling: bigint;
@@ -32,6 +39,7 @@ export function CeilingLine({
   proposed?: { amount: bigint; fits: boolean } | undefined;
   decimals?: number | undefined;
   showLegend?: boolean | undefined;
+  animateProposed?: boolean | undefined;
 }) {
   const used = segments.reduce((a, s) => a + s.amount, 0n);
   const total = used + (proposed?.amount ?? 0n);
@@ -66,8 +74,8 @@ export function CeilingLine({
 
         {proposed && proposed.amount > 0n && (
           <div
-            className={`ceiling-proposed${proposed.fits ? " fits" : ""}`}
-            style={{ left: `${usedPct}%`, width: `${proposedW}%` }}
+            className={`ceiling-proposed${proposed.fits ? " fits" : ""}${animateProposed ? " ceiling-proposed-grow" : ""}`}
+            style={{ left: `${usedPct}%`, ["--proposed-w" as string]: `${proposedW}%`, width: `${proposedW}%` }}
             title={`Proposed: ${contracts(proposed.amount, decimals)}`}
           />
         )}

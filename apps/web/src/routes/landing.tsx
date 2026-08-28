@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CeilingLine, AGENT_COLORS } from "../components/ceiling";
+import { useInViewOnce } from "../hooks/in-view";
 import { GateStack } from "../components/gates";
 import { Tag } from "../components/ui";
 import {
   CrossAgentDiagram,
+  CrossAgentDiagramStacked,
   IntentPipeline,
   RecoveryDiagram,
   ReservationDiagram,
@@ -55,6 +57,8 @@ function Section({
 }
 
 export function Landing() {
+  const [ceilingRef, ceilingSeen] = useInViewOnce<HTMLDivElement>();
+
   const segments = [
     { label: "Momentum agent", amount: 180n * K, color: AGENT_COLORS[0]! },
     { label: "Oracle agent", amount: 240n * K, color: AGENT_COLORS[1]! },
@@ -82,9 +86,8 @@ export function Landing() {
             Your agents can each follow the rules and still break your portfolio.
           </h1>
           <p className="muted" style={{ fontSize: 18, marginTop: 20, maxWidth: 560 }}>
-            AIRSPACE lets independent DreamDEX trading agents share one capital pool while enforcing one
-            portfolio-wide risk envelope across all of them. A trade can be rejected purely because of what the
-            other agents already hold.
+            Independent trading agents share one capital pool. AIRSPACE rejects any order that would push their
+            combined exposure past a portfolio-wide limit.
           </p>
           <div className="row" style={{ marginTop: 28, gap: 12 }}>
             <Link className="btn btn-primary" to="/app">
@@ -97,7 +100,12 @@ export function Landing() {
         </div>
 
         <div className="hero-figure">
-          <CrossAgentDiagram />
+          <div className="hero-wide">
+            <CrossAgentDiagram />
+          </div>
+          <div className="hero-stacked">
+            <CrossAgentDiagramStacked />
+          </div>
         </div>
       </section>
 
@@ -109,9 +117,14 @@ export function Landing() {
         title="Three agents. One ceiling."
         lead="Two agents fill the room. The third is refused — not for being too large, but for being third."
       >
-        <div className="grid" style={{ gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 40 }}>
-          <div className="panel">
-            <CeilingLine segments={segments} ceiling={500n * K} proposed={{ amount: 150n * K, fits: false }} />
+        <div className="split">
+          <div className="panel" ref={ceilingRef}>
+            <CeilingLine
+              segments={segments}
+              ceiling={500n * K}
+              proposed={{ amount: 150n * K, fits: false }}
+              animateProposed={ceilingSeen}
+            />
             <hr className="divider" style={{ margin: "24px 0 16px" }} />
             <div className="equation" style={{ fontSize: 16 }}>
               <span>180</span>

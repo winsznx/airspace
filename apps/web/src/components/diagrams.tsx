@@ -106,7 +106,7 @@ export function CrossAgentDiagram() {
       {agents.map((a, i) => (
         <path
           key={`out-${i}`}
-          className={i < 2 ? "d-flow" : undefined}
+          className={i < 2 ? "d-draw" : undefined}
           d={`M360 214 C 384 214, 384 ${a.y + 30}, 412 ${a.y + 30}`}
           fill="none"
           stroke={AGENT[i]}
@@ -118,6 +118,7 @@ export function CrossAgentDiagram() {
       {[agents[0]!, agents[1]!].map((a, i) => (
         <path
           key={`ok-${i}`}
+          className="d-draw"
           d={`M412 ${a.y + 30} C 444 ${a.y + 30}, 448 214, 470 214`}
           fill="none"
           stroke={AGENT[i]}
@@ -146,6 +147,119 @@ export function CrossAgentDiagram() {
       </text>
       <text x="525" y="258" className="d-sub" textAnchor="middle">
         contracts
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * The hero, recomposed for a narrow screen.
+ *
+ * Not the desktop graph scaled down. At 358px the wide version puts its labels
+ * near 9px, and a thesis diagram that has to be squinted at has failed. This
+ * turns the same argument through 90 degrees: flow runs top to bottom, and the
+ * envelope becomes a horizontal rule the paths either cross or stop at. Same
+ * vocabulary, same colours, same conclusion.
+ */
+export function CrossAgentDiagramStacked() {
+  const agents = [
+    { label: "Momentum", x: 0 },
+    { label: "Oracle", x: 124 },
+    { label: "Mean-rev", x: 248 },
+  ];
+  const lanes = [70, 180, 290];
+
+  return (
+    <svg className="diagram" viewBox="0 0 360 566" role="img" aria-labelledby="d1s-title d1s-desc">
+      <title id="d1s-title">Three agents share one capital pool behind one risk envelope</title>
+      <desc id="d1s-desc">
+        Three independent agents draw on a single shared capital pool. Two of their orders pass through the
+        portfolio risk envelope to DreamDEX. The third is refused at the envelope because the first two have
+        already used the available room.
+      </desc>
+
+      <defs>
+        {AGENT.map((c, i) => (
+          <Marker key={i} id={`d1s-a${i}`} color={c} />
+        ))}
+      </defs>
+
+      {/* agents */}
+      {agents.map((a, i) => (
+        <g key={a.label}>
+          <rect x={a.x} y="0" width="112" height="58" rx="16" fill="var(--paper)" stroke="var(--fog)" />
+          <circle cx={a.x + 20} cy="21" r="5" fill={AGENT[i]} />
+          <text x={a.x + 56} y="26" className="d-node" textAnchor="middle">
+            {a.label}
+          </text>
+          <text x={a.x + 56} y="45" className="d-sub" textAnchor="middle">
+            own key
+          </text>
+          <path
+            d={`M${a.x + 56} 58 C ${a.x + 56} 96, 180 96, 180 132`}
+            fill="none"
+            stroke={AGENT[i]}
+            strokeWidth="2"
+          />
+        </g>
+      ))}
+
+      {/* the shared pool */}
+      <rect x="46" y="132" width="268" height="86" rx="20" fill="var(--linen)" stroke="var(--fog)" />
+      <text x="180" y="167" className="d-node" textAnchor="middle">
+        Shared capital
+      </text>
+      <text x="180" y="190" className="d-sub" textAnchor="middle">
+        one pool, one set of ceilings
+      </text>
+
+      {/* pool out to the envelope, one lane per agent */}
+      {lanes.map((x, i) => (
+        <path
+          key={i}
+          className={i < 2 ? "d-draw" : undefined}
+          d={`M180 218 C 180 256, ${x} 256, ${x} 316`}
+          fill="none"
+          stroke={AGENT[i]}
+          strokeWidth="2"
+        />
+      ))}
+
+      {/* the envelope, now a horizontal rule */}
+      <rect x="0" y="306" width="360" height="20" rx="10" fill="var(--lavender)" opacity="0.07" />
+      <line x1="0" y1="316" x2="360" y2="316" stroke="var(--lavender)" strokeWidth="2" />
+      <text x="360" y="300" className="d-label" textAnchor="end" fill="var(--lavender)">
+        RISK ENVELOPE
+      </text>
+
+      {/* admitted: through, and on to the venue */}
+      {[lanes[0]!, lanes[1]!].map((x, i) => (
+        <path
+          key={i}
+          className="d-draw"
+          d={`M${x} 316 C ${x} 366, 180 366, 180 410`}
+          fill="none"
+          stroke={AGENT[i]}
+          strokeWidth="2"
+          markerEnd={`url(#d1s-a${i})`}
+        />
+      ))}
+
+      {/* refused: stops dead on the rule */}
+      <line x1="282" y1="336" x2="298" y2="376" stroke="var(--ember)" strokeWidth="2" strokeLinecap="round" />
+      <line x1="298" y1="336" x2="282" y2="376" stroke="var(--ember)" strokeWidth="2" strokeLinecap="round" />
+      <text x="290" y="396" className="d-label" textAnchor="middle" fill="var(--ember)">
+        REFUSED
+      </text>
+
+      {/* the venue */}
+      <rect x="80" y="410" width="200" height="96" rx="20" fill="var(--paper)" stroke="var(--sky)" strokeOpacity="0.4" />
+      <circle cx="180" cy="440" r="6" fill="var(--sky)" />
+      <text x="180" y="472" className="d-node" textAnchor="middle">
+        DreamDEX
+      </text>
+      <text x="180" y="493" className="d-sub" textAnchor="middle">
+        event contracts
       </text>
     </svg>
   );
