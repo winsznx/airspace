@@ -496,3 +496,10 @@ export const agentPolicyToTuple = (p: AgentPolicy) =>
   }) as const;
 
 export { DREAMDEX, network };
+
+/**
+ * Venue ABIs, re-exported so a browser client can read the registry, a
+ * market's payout and an outcome-token balance without taking a direct
+ * dependency on `@airspace/protocol`.
+ */
+export { binaryModuleAbi, binaryMarketAbi, binaryPoolAbi, erc6909Abi } from "@airspace/protocol";
