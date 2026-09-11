@@ -162,19 +162,18 @@ export function Landing() {
         </div>
       </Section>
 
-      {/* ------------------------------------------------- shared capital */}
+      {/*
+        Kept compact on purpose: this is the supporting argument for the
+        refusal just shown, not a second thesis. The alternative — three
+        isolated pots of 500 — protects the boundaries and strands the money.
+      */}
       <Section
         eyebrow="Capital efficiency"
-        title="One capital pool. Many strategies."
-        lead="The cautious alternative is three isolated pots of 500. That protects the boundaries and strands the money, and still gives you no view of aggregate risk."
+        title="The alternative is three idle pots of 500."
+        lead="One base, one envelope, every strategy under its own limit. Capital a quiet strategy isn't using is available to a busy one — without either being able to breach the whole."
       >
         <figure className="figure figure-scroll">
           <SharedCapitalDiagram />
-          <figcaption className="figure-note">
-            Every strategy draws on the same base under its own limit, and all of them meet at one
-            portfolio-wide envelope. Capital that a quiet strategy is not using is available to a busy one,
-            without either of them being able to breach the whole.
-          </figcaption>
         </figure>
       </Section>
 
@@ -274,9 +273,9 @@ export function Landing() {
             <div className="caption">Evidence</div>
             <h2>See how AIRSPACE survived hostile validation.</h2>
             <p className="muted">
-              Three independently-keyed agents ran live against one portfolio: 32 orders admitted, 21 refused by
-              the shared envelope. Thirteen adversarial cases, thirteen passes. Every figure here came off the
-              chain.
+              100 tests, including 9 stateful invariants and 16 named adversarial scenarios. A prior safety
+              defect was found, reproduced, fixed and independently re-proven live against this deployment.
+              Every figure in the evidence folder came off the chain.
             </p>
           </div>
           <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
@@ -285,7 +284,7 @@ export function Landing() {
             </Link>
             <a
               className="btn btn-outline"
-              href="https://shannon-explorer.somnia.network/address/0x342d200aCF529905CC815D4ff9841053ea1c2D61"
+              href="https://shannon-explorer.somnia.network/address/0xeD3D4552AFda96EfC5BF47c533E3302C655CB732"
               target="_blank"
               rel="noreferrer"
             >

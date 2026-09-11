@@ -2,10 +2,19 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { parseUnits } from "@airspace/risk";
-import { api, type MarketSummary, type ReservationRow, type SimulateResult } from "../lib/api";
-import { useAgents, useList, useMarkets, usePortfolio, usePortfolioMath } from "../hooks/portfolio";
+import { api, type MarketSummary, type ReconciliationSummary, type ReservationRow, type SimulateResult } from "../lib/api";
+import {
+  useAgents,
+  useList,
+  useMarkets,
+  usePortfolio,
+  usePortfolioMath,
+  useReconciliation,
+} from "../hooks/portfolio";
 import { AGENT_COLORS, CeilingLine, type Segment } from "../components/ceiling";
 import { GateStack, Verdict } from "../components/gates";
+import { ReconciliationPanel } from "../components/reconciliation";
+import { DeploymentVerificationPanel } from "../components/deployment-verification";
 import {
   AddressLink,
   Card,
@@ -34,6 +43,17 @@ export function ControlRoom() {
   const math = usePortfolioMath(portfolio.data);
   const agents = useAgents(address);
   const reservations = useList<ReservationRow>(address, "reservations", { limit: 100 });
+
+  const configuredDomains = useMemo(
+    () => (portfolio.data?.domains ?? []).filter((d) => d.configured).map((d) => d.domain),
+    [portfolio.data],
+  );
+  const reconciliation = useReconciliation(address, configuredDomains);
+  const reconciliationByDomain = useMemo(() => {
+    const map = new Map<string, ReconciliationSummary>();
+    for (const d of reconciliation.data?.domains ?? []) map.set(d.domain, d);
+    return map;
+  }, [reconciliation.data]);
 
   const isOwner =
     Boolean(wallet) && portfolio.data?.owner?.toLowerCase() === wallet?.toLowerCase();
@@ -101,7 +121,7 @@ export function ControlRoom() {
           sub="The denominator every ceiling is measured against"
         />
         <Stat
-          label="Committed"
+          label="Not currently free"
           value={collateral(snap.committedCapital)}
           sub={math ? `${math.utilisation.toFixed(1)}% of base` : undefined}
           tone={math && math.utilisation > 90 ? "ember" : math && math.utilisation > 70 ? "amber" : undefined}
@@ -109,6 +129,11 @@ export function ControlRoom() {
         <Stat label="Reserved for resting orders" value={collateral(snap.reservedCollateral)} sub="Not yet filled" />
         <Stat label="Free collateral" value={collateral(snap.freeCollateral)} sub="Measured, not accumulated" />
       </div>
+      <p className="caption" style={{ marginTop: -12 }}>
+        "Not currently free" is capital base minus free collateral — a budget reading, not a claim about what is
+        in open positions. A profitable sale can pin it at zero while orders are still open; solvency is
+        separately gated on free collateral itself, read from the token.
+      </p>
 
       {/* --------------------------------------------------------- the ceilings */}
       <section className="stack" style={{ gap: 12 }}>
@@ -157,6 +182,9 @@ export function ControlRoom() {
               reservations={reservations.data?.reservations ?? []}
               agentColor={agentColorMap(agents.data?.agents.map((a) => a.address) ?? [])}
               agentName={agentNameMap(agents.data?.agents ?? [])}
+              reconciliation={reconciliationByDomain.get(d.domain)}
+              portfolio={address}
+              onReconciled={() => void reconciliation.refetch()}
             />
           ))
         )}
@@ -177,6 +205,9 @@ export function ControlRoom() {
         markets={markets.data?.markets ?? []}
         marketsLoading={markets.isLoading}
       />
+
+      {/* --------------------------------------------------- technical evidence */}
+      <DeploymentVerificationPanel portfolio={address} />
     </div>
   );
 }
@@ -209,12 +240,18 @@ function DomainCard({
   reservations,
   agentColor,
   agentName,
+  reconciliation,
+  portfolio,
+  onReconciled,
 }: {
   domain: { domain: string; usage: string; ceiling: string; committedCeiling: string; liveMarkets: number; marketCount: number };
   markets: MarketSummary[];
   reservations: ReservationRow[];
   agentColor: (a: string) => string;
   agentName: (a: string) => string;
+  reconciliation: ReconciliationSummary | undefined;
+  portfolio: string;
+  onReconciled: () => void;
 }) {
   const usage = BigInt(domain.usage);
   const ceiling = BigInt(domain.ceiling);
@@ -281,6 +318,34 @@ function DomainCard({
         <span className="caption">
           Committed ceiling <strong className="num" style={{ color: "var(--carbon)" }}>{collateral(domain.committedCeiling)}</strong>
         </span>
+      </div>
+
+      {/*
+        A usage figure over its ceiling is never shown bare. It is always one
+        of two things: a live reservation genuinely occupying that much room,
+        or safe overstatement waiting on a permissionless release — and the
+        panel below is what tells the difference.
+      */}
+      {over ? (
+        <div style={{ marginTop: 16 }}>
+          <Notice kind="warn" title="Usage reads over its ceiling">
+            AIRSPACE may temporarily reserve more capacity than current positions require while it waits to
+            prove an old order can be released. This blocks additional trades rather than understating risk.
+            See the reconciliation detail below for what is pending and why.
+          </Notice>
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 16 }}>
+        <ReconciliationPanel
+          domain={domain.domain}
+          marketCount={domain.marketCount}
+          usage={usage}
+          ceiling={ceiling}
+          summary={reconciliation}
+          portfolio={portfolio}
+          onReconciled={onReconciled}
+        />
       </div>
     </Card>
   );
@@ -390,9 +455,13 @@ function AdmissionPreview({
   return (
     <section className="stack" style={{ gap: 12 }}>
       <div>
-        <h2 style={{ fontSize: 20 }}>Would this be admitted?</h2>
+        <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+          <h2 style={{ fontSize: 20 }}>Would this be admitted?</h2>
+          <Tag tone="neutral">Advisory preview</Tag>
+        </div>
         <p className="muted" style={{ marginTop: 4 }}>
-          Ask the portfolio contract what it would decide right now, gate by gate.
+          Ask the portfolio contract what it would decide right now, gate by gate — rechecked atomically
+          on-chain at submission. Another agent may consume headroom first; a PASS here is not a promise.
         </p>
       </div>
 

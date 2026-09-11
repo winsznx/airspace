@@ -188,10 +188,11 @@ export function IntentDetail() {
     );
   }
 
-  const { receipt: r, copy, refusalName } = q.data!;
+  const { receipt: r, order, copy, refusalName } = q.data!;
   const refused = r.decision === "REFUSED";
   const before = r.domain_usage_before;
   const after = r.domain_usage_after;
+  const side = order ? (KIND_LABEL[order.kind] ?? `kind ${order.kind}`) : null;
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -199,12 +200,15 @@ export function IntentDetail() {
         <Link className="caption" to={`/app/${address}/activity`}>
           ← Activity
         </Link>
-        <div className="row" style={{ gap: 10, marginTop: 10 }}>
-          <h1 style={{ fontSize: 24 }}>{refused ? "Blocked intent" : "Admitted intent"}</h1>
+        <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: 24 }}>
+            {order ? `${side} ${contracts(order.quantity)}` : refused ? "Blocked intent" : "Admitted intent"}
+          </h1>
           {refused ? <Tag tone="fail">Refused</Tag> : <Tag tone="pass">Admitted</Tag>}
         </div>
         <div className="caption" style={{ marginTop: 6 }}>
-          {shortHash(r.intent_hash)}
+          {marketLabel(r.market_id)}
+          {order ? <> · requested {probability(order.price)}</> : null} · {shortHash(r.intent_hash)}
         </div>
       </div>
 
@@ -250,6 +254,14 @@ export function IntentDetail() {
             <div className="stat-sub">measured from chain state</div>
           </Card>
         </div>
+      ) : null}
+
+      {!refused && order?.orderId ? (
+        <Notice kind="info" title="Resulting DreamDEX order">
+          Placed on the pool as order <span className="hash">{order.orderId}</span> at{" "}
+          <AddressLink address={order.poolAddress} />. This is the same order id AIRSPACE tracks for release and
+          reconciliation.
+        </Notice>
       ) : null}
 
       <div className="grid grid-2">

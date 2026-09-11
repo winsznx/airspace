@@ -193,6 +193,23 @@ export function TableActions({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Technical detail, collapsed by default.
+ *
+ * Native `<details>`: no JS state, works with find-in-page, and degrades to
+ * "just shown" if CSS fails to load rather than hiding content behind broken
+ * script. Used to keep reconciliation and lifecycle internals out of the way
+ * of the headline numbers without removing them from the page.
+ */
+export function Disclosure({ summary, children }: { summary: ReactNode; children: ReactNode }) {
+  return (
+    <details className="disclosure">
+      <summary className="disclosure-summary">{summary}</summary>
+      <div className="disclosure-body">{children}</div>
+    </details>
+  );
+}
+
 export function NavLinkTab({ to, children, active }: { to: string; children: ReactNode; active: boolean }) {
   return (
     <Link to={to} className={`tab${active ? " tab-active" : ""}`}>

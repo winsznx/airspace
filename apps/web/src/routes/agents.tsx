@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { isAddress, keccak256, toHex, zeroHash } from "viem";
 import { parseUnits } from "@airspace/risk";
 import { airspacePortfolioAbi } from "@airspace/sdk";
-import { useAgents, usePortfolio } from "../hooks/portfolio";
+import { useAgents, useList, usePortfolio } from "../hooks/portfolio";
 import { useWrite } from "../hooks/tx";
 import { TxStatus } from "../components/tx";
 import { useIsWrongNetwork } from "../wallet";
@@ -16,12 +16,11 @@ import {
   ErrorState,
   LoadingCard,
   Notice,
-  TableWrap,
   Tag,
   TxLink,
 } from "../components/ui";
-import { collateral, probability } from "../lib/format";
-import type { AgentSummary } from "../lib/api";
+import { collateral, contracts, marketLabel, probability } from "../lib/format";
+import type { AgentSummary, IntentRow, ReservationRow } from "../lib/api";
 
 const BLANK = {
   address: "",
@@ -46,6 +45,8 @@ export function AgentsPage() {
   const { address: wallet } = useAccount();
   const portfolio = usePortfolio(address);
   const agents = useAgents(address);
+  const reservations = useList<ReservationRow>(address, "reservations", { limit: 200 });
+  const intents = useList<IntentRow>(address, "intents", { limit: 200 });
   const wrongNetwork = useIsWrongNetwork();
   const tx = useWrite();
   const [form, setForm] = useState(BLANK);
@@ -58,6 +59,34 @@ export function AgentsPage() {
 
   const addressValid = isAddress(form.address);
   const duplicate = list.some((a) => a.address.toLowerCase() === form.address.toLowerCase());
+
+  const activityByAgent = useMemo(() => {
+    const m = new Map<
+      string,
+      { markets: Set<string>; openOrders: number; reservedQty: bigint; admitted: number; refused: number; exposure: bigint }
+    >();
+    const get = (a: string) => {
+      const k = a.toLowerCase();
+      if (!m.has(k)) m.set(k, { markets: new Set(), openOrders: 0, reservedQty: 0n, admitted: 0, refused: 0, exposure: 0n });
+      return m.get(k)!;
+    };
+    for (const r of reservations.data?.reservations ?? []) {
+      if (!["RESERVED", "RESTING", "PARTIAL", "NEEDS_RECONCILIATION"].includes(r.state)) continue;
+      const e = get(r.agent_address);
+      e.markets.add(r.market_id);
+      e.openOrders += 1;
+      e.reservedQty += BigInt(r.qty_open);
+    }
+    for (const i of intents.data?.intents ?? []) {
+      const e = get(i.agent_address);
+      if (i.status === "ADMITTED") e.admitted += 1;
+      else e.refused += 1;
+    }
+    // Realized positions aren't agent-scoped on chain — a market's balance
+    // belongs to the portfolio, not any one agent — so that figure is shown at
+    // the market level on the Event Contracts page, not attributed here.
+    return m;
+  }, [reservations.data, intents.data]);
 
   const submit = async () => {
     const hash = await tx.send({
@@ -259,115 +288,132 @@ export function AgentsPage() {
             : "An agent is an address you authorise to trade from this pool, under limits you set."}
         </Empty>
       ) : (
-        <TableWrap>
-          <table>
-            <thead>
-              <tr>
-                <th>Agent</th>
-                <th>Status</th>
-                <th className="num-cell">Committed</th>
-                <th className="num-cell">Max committed</th>
-                <th className="num-cell">Max order</th>
-                <th className="num-cell">Price band</th>
-                <th className="num-cell">Cooldown</th>
-                <th className="num-cell">Nonce</th>
-                <th>Registered</th>
-                {isOwner ? <th /> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((a, i) => (
-                <AgentRow
-                  key={a.address}
-                  agent={a}
-                  color={AGENT_COLORS[i % AGENT_COLORS.length]!}
-                  portfolio={address}
-                  isOwner={isOwner}
-                  onChanged={() => void agents.refetch()}
-                />
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
+        <div className="agent-fleet">
+          {list.map((a, i) => (
+            <AgentCard
+              key={a.address}
+              agent={a}
+              color={AGENT_COLORS[i % AGENT_COLORS.length]!}
+              portfolio={address}
+              isOwner={isOwner}
+              activity={activityByAgent.get(a.address.toLowerCase())}
+              onChanged={() => void agents.refetch()}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function AgentRow({
+/**
+ * A strategy label derived from the on-chain `strategyId` hash's PREIMAGE —
+ * the plain string the owner typed at registration, which the receipt and
+ * this UI both keep locally so a hash never has to stand in for a name.
+ * Unrecognised or hand-set ids fall back to "Custom strategy" rather than a
+ * guess: nothing here is invented from the hash itself, which is one-way.
+ */
+function strategyIdentity(strategyId: string | null): { kind: string; blurb: string } {
+  const id = (strategyId ?? "").toLowerCase();
+  if (id.includes("momentum")) return { kind: "Momentum", blurb: "Trades with the direction of recent price moves." };
+  if (id.includes("revers") || id.includes("mean")) return { kind: "Mean reversion", blurb: "Trades against recent moves, toward a fair-value estimate." };
+  if (id.includes("oracle") || id.includes("fair")) return { kind: "Fair-value / oracle", blurb: "Prices against an external reference rather than the book." };
+  if (id.includes("spread") || id.includes("market")) return { kind: "Spread / market-making", blurb: "Quotes both sides, profiting from the spread rather than direction." };
+  return { kind: "Custom strategy", blurb: "An independent strategy under its own local policy." };
+}
+
+function AgentCard({
   agent,
   color,
   portfolio,
   isOwner,
+  activity,
   onChanged,
 }: {
   agent: AgentSummary;
   color: string;
   portfolio: string;
   isOwner: boolean;
+  activity: { markets: Set<string>; openOrders: number; reservedQty: bigint; admitted: number; refused: number } | undefined;
   onChanged: () => void;
 }) {
   const tx = useWrite();
   const wrongNetwork = useIsWrongNetwork();
+  const identity = strategyIdentity(agent.strategyId);
+  const utilisation = agent.policy.maxCommitted !== "0" ? (Number(agent.committed) / Number(agent.policy.maxCommitted)) * 100 : 0;
 
   return (
-    <>
-      <tr>
-        <td className="strong">
-          <span className="row" style={{ gap: 8 }}>
-            <span
-              style={{ width: 8, height: 8, borderRadius: "50%", background: color, flex: "none" }}
-              aria-hidden
-            />
-            <span className="stack" style={{ gap: 2 }}>
-              <span>{agent.displayName || "Unnamed agent"}</span>
-              <AddressLink address={agent.address} />
-            </span>
+    <Card className="agent-card">
+      <div className="row-between" style={{ alignItems: "flex-start" }}>
+        <div className="row" style={{ gap: 10 }}>
+          <span className="agent-dot" style={{ background: color }} aria-hidden />
+          <div className="stack" style={{ gap: 2 }}>
+            <span style={{ fontWeight: 500, color: "var(--carbon)" }}>{agent.displayName || identity.kind}</span>
+            <span className="caption">{identity.kind}</span>
+          </div>
+        </div>
+        {agent.enabled ? <Tag tone="pass">Active</Tag> : <Tag tone="neutral">Revoked</Tag>}
+      </div>
+
+      <p className="caption" style={{ marginTop: 8, marginBottom: 0 }}>
+        {identity.blurb}
+      </p>
+
+      <div className="agent-stats">
+        <div>
+          <span className="stat-label">Portfolio usage</span>
+          <span className="stat-value">{collateral(agent.committed)}</span>
+          <span className="caption dim">of {collateral(agent.policy.maxCommitted)} local limit ({utilisation.toFixed(0)}%)</span>
+        </div>
+        <div>
+          <span className="stat-label">Markets touched</span>
+          <span className="stat-value">{activity?.markets.size ?? 0}</span>
+          <span className="caption dim">{activity ? [...activity.markets].slice(0, 2).map((m) => marketLabel(m)).join(", ") : "—"}</span>
+        </div>
+        <div>
+          <span className="stat-label">Open reservations</span>
+          <span className="stat-value">{activity?.openOrders ?? 0}</span>
+          <span className="caption dim">{activity ? contracts(activity.reservedQty) : "0"} reserved</span>
+        </div>
+        <div>
+          <span className="stat-label">Intents</span>
+          <span className="stat-value">
+            {activity?.admitted ?? 0} <span className="dim">admitted</span>
           </span>
-        </td>
-        <td>{agent.enabled ? <Tag tone="pass">Active</Tag> : <Tag tone="neutral">Revoked</Tag>}</td>
-        <td className="num-cell num">{collateral(agent.committed)}</td>
-        <td className="num-cell num">{collateral(agent.policy.maxCommitted)}</td>
-        <td className="num-cell num">{collateral(agent.policy.maxOrderNotional)}</td>
-        <td className="num-cell num">
-          {probability(agent.policy.minSellPrice)} – {probability(agent.policy.maxBuyPrice)}
-        </td>
-        <td className="num-cell num">{agent.policy.cooldownSec === "0" ? "—" : `${agent.policy.cooldownSec}s`}</td>
-        <td className="num-cell num">{agent.nonce}</td>
-        <td>
-          <TxLink hash={agent.registeredTx} />
-        </td>
-        {isOwner ? (
-          <td>
-            {agent.enabled ? (
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={tx.busy || wrongNetwork}
-                onClick={async () => {
-                  const h = await tx.send({
-                    address: portfolio as `0x${string}`,
-                    abi: airspacePortfolioAbi,
-                    functionName: "revokeAgent",
-                    args: [agent.address as `0x${string}`],
-                  });
-                  if (h) onChanged();
-                }}
-              >
-                {tx.busy ? "…" : "Revoke"}
-              </button>
-            ) : (
-              <span className="dim">—</span>
-            )}
-          </td>
-        ) : null}
-      </tr>
-      {tx.phase !== "idle" ? (
-        <tr>
-          <td colSpan={isOwner ? 10 : 9} style={{ paddingTop: 0 }}>
-            <TxStatus state={tx} onDismiss={tx.reset} />
-          </td>
-        </tr>
+          <span className="caption dim">{activity?.refused ?? 0} refused by envelope or policy</span>
+        </div>
+      </div>
+
+      <div className="row-between" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
+        <span className="caption">
+          Order band {probability(agent.policy.minSellPrice)}–{probability(agent.policy.maxBuyPrice)} · max order{" "}
+          {collateral(agent.policy.maxOrderNotional)} · cooldown {agent.policy.cooldownSec === "0" ? "none" : `${agent.policy.cooldownSec}s`}
+        </span>
+        <span className="row" style={{ gap: 10 }}>
+          <AddressLink address={agent.address} />
+          <TxLink hash={agent.registeredTx} label="registration" />
+        </span>
+      </div>
+
+      {isOwner && agent.enabled ? (
+        <button
+          className="btn btn-danger btn-sm"
+          style={{ marginTop: 12 }}
+          disabled={tx.busy || wrongNetwork}
+          onClick={async () => {
+            const h = await tx.send({
+              address: portfolio as `0x${string}`,
+              abi: airspacePortfolioAbi,
+              functionName: "revokeAgent",
+              args: [agent.address as `0x${string}`],
+            });
+            if (h) onChanged();
+          }}
+        >
+          {tx.busy ? "…" : "Revoke"}
+        </button>
       ) : null}
-    </>
+      {tx.phase !== "idle" ? <TxStatus state={tx} onDismiss={tx.reset} /> : null}
+    </Card>
   );
 }

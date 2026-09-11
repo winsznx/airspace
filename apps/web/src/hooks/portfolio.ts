@@ -120,6 +120,23 @@ export function useMarkets(minRemaining = 120) {
   });
 }
 
+/**
+ * Reconciliation and headroom truth, per domain. Polled rather than pushed
+ * over the socket: it is a secondary panel, not the primary live figure, and
+ * the numbers it reports change on the order of minutes (a release, a prune),
+ * not seconds.
+ */
+export function useReconciliation(address: string | undefined, domains: string[]) {
+  const domainsKey = domains.join(",");
+  return useQuery({
+    queryKey: ["reconciliation", address, domainsKey],
+    enabled: Boolean(address) && domains.length > 0,
+    queryFn: () => api.reconciliation(address!, domains),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+}
+
 export function useList<T>(
   address: string | undefined,
   kind: "intents" | "receipts" | "reservations" | "positions",

@@ -422,6 +422,27 @@ td.strong {
   font-variant-numeric: tabular-nums;
 }
 
+/* Compact key/value table for evidence disclosures — no outer border, tighter
+   rows than the data-grid table above. */
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+.kv-table td {
+  padding: 4px 0;
+  border-bottom: 0;
+  color: var(--graphite);
+}
+.kv-table td:first-child {
+  color: var(--ash);
+}
+.kv-table td:last-child {
+  text-align: right;
+  color: var(--carbon);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================================
    THE CEILING LINE — the signature element.
 
@@ -514,6 +535,67 @@ td.strong {
   height: 10px;
   border-radius: 3px;
   flex: none;
+}
+
+/* ------------------------------------------------------------- agent fleet */
+
+.agent-fleet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--s16);
+}
+.agent-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 4px;
+}
+.agent-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s12) var(--s16);
+  margin-top: var(--s16);
+  padding-top: var(--s12);
+  border-top: 1px solid var(--fog);
+}
+.agent-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ------------------------------------------------------- generation chain */
+
+.generation-chain {
+  display: flex;
+  flex-direction: column;
+}
+.generation-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s12);
+  padding: var(--s8) 0;
+}
+.generation-nonce {
+  font-weight: 500;
+  color: var(--carbon);
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+}
+.generation-gen {
+  font-size: var(--text-caption);
+  color: var(--ash);
+}
+.generation-link {
+  width: 1px;
+  height: 14px;
+  background: var(--fog);
+  margin-left: 31px;
+}
+.muted-card {
+  opacity: 0.85;
 }
 
 /* ------------------------------------------------------------- gate stack */
@@ -711,6 +793,42 @@ td.strong {
 .notice-info {
   background: #f2f6ff;
   border-color: #d8e4ff;
+}
+
+.disclosure {
+  border: 1px solid var(--fog);
+  border-radius: var(--r-card);
+  background: var(--paper);
+}
+.disclosure-summary {
+  cursor: pointer;
+  padding: var(--s12) var(--s16);
+  font-size: var(--text-caption);
+  color: var(--graphite);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-summary::before {
+  content: "▸";
+  font-size: 10px;
+  color: var(--ash);
+  transition: transform 0.15s ease;
+}
+.disclosure[open] > .disclosure-summary::before {
+  transform: rotate(90deg);
+}
+.disclosure-summary:hover {
+  color: var(--carbon);
+}
+.disclosure-body {
+  padding: 0 var(--s16) var(--s16);
+  border-top: 1px solid var(--fog);
+  padding-top: var(--s12);
 }
 
 .freshness {
