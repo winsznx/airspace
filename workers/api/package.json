@@ -11,7 +11,6 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@airspace/db": "workspace:*",
     "@airspace/protocol": "workspace:*",
     "@airspace/risk": "workspace:*",
     "@airspace/sdk": "workspace:*",

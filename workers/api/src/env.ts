@@ -3,9 +3,8 @@ import type { Address } from "@airspace/types";
 /**
  * Worker bindings and configuration.
  *
- * Every secret arrives as a Worker secret (`wrangler secret put`), never from
- * the repository and never from a client. `SUPABASE_SERVICE_ROLE_KEY` in
- * particular must never reach a browser bundle or an API response body.
+ * The API holds no credentials: every read is a public chain read and every
+ * write is a wallet-signed transaction sent from the browser.
  */
 export interface Env {
   // --- vars (public) ---
@@ -13,11 +12,6 @@ export interface Env {
   SHANNON_RPC: string;
   SHANNON_RPC_FALLBACK: string;
   AIRSPACE_FACTORY: string;
-  SUPABASE_URL: string;
-  SUPABASE_ANON_KEY: string;
-
-  // --- secrets ---
-  SUPABASE_SERVICE_ROLE_KEY: string;
 
   // --- bindings ---
   PORTFOLIO: DurableObjectNamespace;

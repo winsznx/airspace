@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { Address, DomainId, MarketId } from "@airspace/types";
 import { Refusal, REFUSAL_COPY, REFUSAL_NAME } from "@airspace/types";
-import { explainAdmission, domainRiskUsage as independentDomainRiskUsage, type MarketPosition } from "@airspace/risk";
+import { explainAdmission } from "@airspace/risk";
 import {
   airspacePortfolioAbi,
   airspacePortfolioFactoryAbi,
@@ -19,8 +19,13 @@ import {
   readMarket,
   type IntentStruct,
 } from "@airspace/protocol";
-import { BaseError, ContractFunctionRevertedError, decodeFunctionData, toFunctionSelector } from "viem";
-import { createServiceDb, createPublicDb, toBigInt } from "@airspace/db";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  decodeFunctionData,
+  recoverMessageAddress,
+  toFunctionSelector,
+} from "viem";
 import type { Env } from "./env.js";
 import { chainId, factoryAddress } from "./env.js";
 import { publicClient, verifiedFactory } from "./rpc.js";
@@ -38,6 +43,16 @@ export { PortfolioCoordinator } from "./coordinator.js";
 
 type Ctx = { Bindings: Env };
 const app = new Hono<Ctx>();
+
+/** The portfolio's own Durable Object: its event store, and every view derived from it. */
+const portfolioStub = (env: Env, address: string) =>
+  env.PORTFOLIO.get(env.PORTFOLIO.idFromName(`${chainId(env)}:${address.toLowerCase()}`));
+
+async function portfolioView<T>(env: Env, address: string, kind: string, params: Record<string, string> = {}): Promise<{ status: number; body: T }> {
+  const q = new URLSearchParams({ portfolio: address, kind, ...params });
+  const res = await portfolioStub(env, address).fetch(`https://do/view?${q.toString()}`);
+  return { status: res.status, body: (await res.json()) as T };
+}
 
 app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 
@@ -276,8 +291,6 @@ app.get("/api/config", async (c) => {
   return c.json({
     chainId: chainId(c.env),
     factory: c.env.AIRSPACE_FACTORY || null,
-    supabaseUrl: c.env.SUPABASE_URL,
-    supabaseAnonKey: c.env.SUPABASE_ANON_KEY,
     explorer: chainId(c.env) === 5031 ? "https://explorer.somnia.network" : "https://shannon-explorer.somnia.network",
   });
 });
@@ -297,72 +310,26 @@ app.get("/api/owners/:owner/portfolios", async (c) => {
     args: [owner],
   })) as Address[];
 
-  // Display names are the only non-chain field, and are labelled as such.
-  const db = createPublicDb(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY);
-  const { data } = await db
-    .from("portfolios")
-    .select("portfolio_address,display_name")
-    .in("portfolio_address", list.map((a) => a.toLowerCase()));
-
-  const names = new Map((data ?? []).map((r) => [r.portfolio_address, r.display_name]));
   return c.json({
     portfolios: list.map((address) => ({
       address,
-      displayName: names.get(address.toLowerCase()) ?? null,
+      // A portfolio has no on-chain name and nothing sets an off-chain one.
+      displayName: null,
       displayNameProvenance: "OFFCHAIN_WITNESS",
     })),
   });
 });
 
-/**
- * Which domains a snapshot should cover.
- *
- * The caller supplies the domains of markets that are live RIGHT NOW, which is
- * what it can see. That set alone is not enough: a domain the owner configured
- * disappears from it the moment its series rolls, so a ceiling that is still
- * enforced would vanish from the interface and the owner would reasonably think
- * their configuration was lost.
- *
- * So the requested set is unioned with the domains this portfolio has actually
- * configured, projected from its own `DomainPolicySet` logs. Nothing here
- * authorises anything — it only decides what to look up on chain, and every
- * value in the snapshot is then read from the contract.
- */
-async function domainsFor(env: Env, address: string, requested: string): Promise<string[]> {
-  const asked = requested.split(",").filter(isBytes32);
-  try {
-    const db = createPublicDb(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-    const { data: pf } = await db
-      .from("portfolios")
-      .select("id")
-      .eq("portfolio_address", address.toLowerCase())
-      .maybeSingle();
-    if (!pf) return asked;
-
-    const { data } = await db
-      .from("domain_policies")
-      .select("domain_hash")
-      .eq("portfolio_id", pf.id)
-      .eq("configured", true);
-
-    const configured = (data ?? []).map((r) => r.domain_hash as string).filter(isBytes32);
-    // Bounded: a snapshot reads every domain on chain, so an unbounded union
-    // would let the projection dictate how much work each request does.
-    return [...new Set([...asked, ...configured])].slice(0, 32);
-  } catch {
-    // The projection is a convenience. Losing it must not break a live read.
-    return asked;
-  }
-}
-
 /** Live portfolio state, via the per-portfolio Durable Object. */
 app.get("/api/portfolios/:address", async (c) => {
   const address = c.req.param("address");
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
-  const domains = (await domainsFor(c.env, address, c.req.query("domains") ?? "")).join(",");
+  // The Durable Object unions these with the domains this portfolio has
+  // configured, from its own event store, so a rolled series never hides an
+  // enforced ceiling.
+  const domains = (c.req.query("domains") ?? "").split(",").filter(isBytes32).join(",");
 
-  const id = c.env.PORTFOLIO.idFromName(`${chainId(c.env)}:${address.toLowerCase()}`);
-  const stub = c.env.PORTFOLIO.get(id);
+  const stub = portfolioStub(c.env, address);
   const res = await stub.fetch(
     `https://do/snapshot?portfolio=${address}&domains=${encodeURIComponent(domains)}&force=${c.req.query("force") ?? "0"}`,
   );
@@ -376,9 +343,8 @@ app.get("/api/portfolios/:address/stream", async (c) => {
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
   if (c.req.header("Upgrade") !== "websocket") return bad(c, "expected a websocket upgrade", 426);
 
-  const domains = (await domainsFor(c.env, address, c.req.query("domains") ?? "")).join(",");
-  const id = c.env.PORTFOLIO.idFromName(`${chainId(c.env)}:${address.toLowerCase()}`);
-  const stub = c.env.PORTFOLIO.get(id);
+  const domains = (c.req.query("domains") ?? "").split(",").filter(isBytes32).join(",");
+  const stub = portfolioStub(c.env, address);
   return stub.fetch(`https://do/stream?portfolio=${address}&domains=${encodeURIComponent(domains)}`, {
     headers: c.req.raw.headers,
   });
@@ -387,50 +353,45 @@ app.get("/api/portfolios/:address/stream", async (c) => {
 app.get("/api/portfolios/:address/agents", async (c) => {
   const address = c.req.param("address");
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
-  const db = createPublicDb(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY);
-
-  const { data: portfolio } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("portfolio_address", address.toLowerCase())
-    .maybeSingle();
-  if (!portfolio) return c.json({ agents: [], note: "portfolio not yet indexed" });
-
-  const { data: agents } = await db
-    .from("agents")
-    .select("*")
-    .eq("portfolio_id", portfolio.id)
-    .order("created_at", { ascending: true });
-
-  // Chain state is authoritative for enabled/committed; the row is a projection.
   const client = publicClient(c.env);
+
+  // The address SET is read from the portfolio's own `AgentSet` logs, held in
+  // its Durable Object: an address that can sign a valid intent right now shows
+  // up here with no database involved. Everything about it that matters —
+  // enabled, limits, committed, nonce — is then re-read from the contract.
+  const { body } = await portfolioView<{
+    agents: Array<{ address: Address; strategyId: string | null; registeredTx: string }>;
+    names: Record<string, string>;
+    complete: boolean;
+  }>(c.env, address, "agents");
+
   const enriched = await Promise.all(
-    (agents ?? []).map(async (a) => {
+    body.agents.map(async (a) => {
       const [policy, committed, nonce] = await Promise.all([
         client.readContract({
           address: address as Address,
           abi: airspacePortfolioAbi,
           functionName: "agentPolicy",
-          args: [a.agent_address as Address],
+          args: [a.address],
         }) as Promise<readonly [boolean, bigint, bigint, bigint, bigint, bigint, string]>,
         client.readContract({
           address: address as Address,
           abi: airspacePortfolioAbi,
           functionName: "agentCommitted",
-          args: [a.agent_address as Address],
+          args: [a.address],
         }) as Promise<bigint>,
         client.readContract({
           address: address as Address,
           abi: airspacePortfolioAbi,
           functionName: "agentNonce",
-          args: [a.agent_address as Address],
+          args: [a.address],
         }) as Promise<bigint>,
       ]);
       return S({
-        address: a.agent_address,
-        displayName: a.display_name,
-        strategyId: a.strategy_id,
-        strategyVersion: a.strategy_version,
+        address: a.address,
+        displayName: body.names[a.address.toLowerCase()] ?? null,
+        strategyId: a.strategyId,
+        strategyVersion: null,
         enabled: policy[0],
         policy: {
           maxCommitted: policy[1],
@@ -441,11 +402,73 @@ app.get("/api/portfolios/:address/agents", async (c) => {
         },
         committed,
         nonce,
-        registeredTx: a.registered_tx,
+        registeredTx: a.registeredTx,
       });
     }),
   );
-  return c.json({ agents: enriched });
+  return c.json({ agents: enriched, complete: body.complete });
+});
+
+/**
+ * Set an agent's display name — purely cosmetic (`OFFCHAIN_WITNESS`
+ * provenance), never read by admission logic, never mirrored on chain: the
+ * `AgentSet` event carries no name field at all.
+ *
+ * There is no session or backend auth in this product — every other write
+ * is authorized by a wallet signing a real transaction, so this is gated the
+ * same way, minus the gas: the OWNER signs a plain message (not a tx) and
+ * the signature is checked against `owner()` read live from the portfolio,
+ * never a cached value. The signed message embeds a timestamp so an old
+ * signature cannot be replayed to rename an agent again later.
+ */
+app.put("/api/portfolios/:address/agents/:agent/name", async (c) => {
+  const address = c.req.param("address");
+  const agentAddress = c.req.param("agent");
+  if (!isAddress(address)) return bad(c, "invalid portfolio address");
+  if (!isAddress(agentAddress)) return bad(c, "invalid agent address");
+
+  const body = await c.req.json<{ name: string; signature: `0x${string}`; timestamp: number }>();
+  const name = (body.name ?? "").trim().slice(0, 40);
+  if (typeof body.timestamp !== "number" || Math.abs(Date.now() - body.timestamp) > 5 * 60_000) {
+    return bad(c, "signature timestamp is missing or expired — try again");
+  }
+  if (!body.signature) return bad(c, "missing signature");
+
+  const message = [
+    "AIRSPACE",
+    "Set agent display name",
+    `Portfolio: ${address.toLowerCase()}`,
+    `Agent: ${agentAddress.toLowerCase()}`,
+    `Name: ${name}`,
+    `Timestamp: ${body.timestamp}`,
+  ].join("\n");
+
+  const client = publicClient(c.env);
+  const [owner, signer] = await Promise.all([
+    client.readContract({ address: address as Address, abi: airspacePortfolioAbi, functionName: "owner" }) as Promise<Address>,
+    recoverMessageAddress({ message, signature: body.signature }).catch(() => null),
+  ]);
+  if (!signer || signer.toLowerCase() !== owner.toLowerCase()) {
+    return c.json({ error: "signature was not from this portfolio's owner" }, 403);
+  }
+
+  const policyHash = (await client
+    .readContract({
+      address: address as Address,
+      abi: airspacePortfolioAbi,
+      functionName: "agentPolicyHash",
+      args: [agentAddress as Address],
+    })
+    .catch(() => null)) as `0x${string}` | null;
+  if (!policyHash || /^0x0+$/.test(policyHash)) return bad(c, "this address has never been registered as an agent", 404);
+
+  const res = await portfolioStub(c.env, address).fetch("https://do/name", {
+    method: "POST",
+    body: JSON.stringify({ agent: agentAddress, name }),
+  });
+  if (!res.ok) return c.json({ error: "failed to save display name" }, 500);
+
+  return c.json({ address: agentAddress.toLowerCase(), displayName: name || null });
 });
 
 // ---------------------------------------------------------------------------
@@ -687,59 +710,41 @@ app.post("/api/intents/report", async (c) => {
   if (refusal === null) return bad(c, "transaction did not revert with Refused(code)");
 
   const hash = intentHash(portfolio, cid, txn.from.toLowerCase() as Address, intent);
-  const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
-  const portfolioId = await ensurePortfolioRow(c.env, db, client, portfolio);
-  if (!portfolioId) return c.json({ error: "NOT_AN_AIRSPACE_PORTFOLIO" }, 404);
 
-  const domain = (await client
-    .readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "domainOf", args: [intent.marketId] })
-    .catch(() => null)) as DomainId | null;
+  // Admission is decided by the factory, not by the caller. Without this an
+  // arbitrary reverted transaction to any contract could be filed here.
+  const isPortfolio = (await client.readContract({
+    address: factoryAddress(c.env),
+    abi: airspacePortfolioFactoryAbi,
+    functionName: "isPortfolio",
+    args: [portfolio],
+  })) as boolean;
+  if (!isPortfolio) return c.json({ error: "NOT_AN_AIRSPACE_PORTFOLIO" }, 404);
 
-  const common = {
-    portfolio_id: portfolioId,
-    intent_hash: hash,
-    agent_address: txn.from.toLowerCase(),
-    market_id: intent.marketId,
-    tx_hash: body.txHash,
-    block_number: Number(receipt.blockNumber),
-  };
+  const block = await client.getBlock({ blockNumber: receipt.blockNumber });
 
-  await db.from("intents").upsert(
-    {
-      ...common,
-      market_nonce: Number(intent.marketNonce),
-      pool_address: intent.pool.toLowerCase(),
-      domain_hash: domain,
+  // Held in the portfolio's own Durable Object, beside the events it explains.
+  // Every field was decoded from the transaction or returned by replaying it.
+  // None was witnessed by a worker and none was supplied by a client.
+  await portfolioStub(c.env, portfolio).fetch("https://do/refusal", {
+    method: "POST",
+    body: JSON.stringify({
+      intentHash: hash,
+      agent: txn.from.toLowerCase(),
+      marketId: intent.marketId,
+      pool: intent.pool.toLowerCase(),
+      marketNonce: intent.marketNonce.toString(),
       kind: Number(intent.kind),
-      order_type: Number(intent.orderType),
+      orderType: Number(intent.orderType),
       price: intent.price.toString(),
       quantity: intent.quantity.toString(),
-      agent_nonce: Number(intent.nonce),
-      status: "REFUSED",
-      refusal_code: refusal,
-      strategy_version: intent.strategyVersion,
-      log_index: 0,
-    },
-    { onConflict: "portfolio_id,intent_hash" },
-  );
-
-  await db.from("receipts").upsert(
-    {
-      ...common,
-      decision: "REFUSED",
-      refusal_code: refusal,
-      domain_hash: domain,
-      // Every field was decoded from the transaction or returned by replaying
-      // it. None was witnessed by a worker and none was supplied by a client.
-      provenance: {
-        decision: "contract",
-        refusal_code: "contract",
-        market_id: "contract",
-        agent_address: "contract",
-      },
-    },
-    { onConflict: "portfolio_id,intent_hash" },
-  );
+      agentNonce: intent.nonce.toString(),
+      refusal,
+      tx: body.txHash,
+      block: receipt.blockNumber.toString(),
+      ts: Number(block.timestamp),
+    }),
+  });
 
   return c.json({
     recorded: true,
@@ -749,69 +754,6 @@ app.post("/api/intents/report", async (c) => {
     copy: REFUSAL_COPY[refusal] ?? null,
   });
 });
-
-/**
- * The portfolio's row, creating it from chain state if the indexer has not
- * reached it yet.
- *
- * A refusal exists only as a failed transaction, so it is not replayable from
- * logs: if this endpoint rejected the report because the indexer was a minute
- * behind, that refusal would be lost for good. Admission is decided by the
- * factory, not by the caller — `isPortfolio` is the same check the rest of the
- * system uses, and owner and collateral are read from the portfolio itself.
- */
-async function ensurePortfolioRow(
-  env: Env,
-  db: ReturnType<typeof createServiceDb>,
-  client: ReturnType<typeof publicClient>,
-  portfolio: Address,
-): Promise<string | null> {
-  const cid = chainId(env);
-  const { data: existing } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("chain_id", cid)
-    .eq("portfolio_address", portfolio)
-    .maybeSingle();
-  if (existing) return existing.id as string;
-
-  const factory = factoryAddress(env);
-  const isPortfolio = (await client.readContract({
-    address: factory,
-    abi: airspacePortfolioFactoryAbi,
-    functionName: "isPortfolio",
-    args: [portfolio],
-  })) as boolean;
-  if (!isPortfolio) return null;
-
-  const [owner, collateral, version] = await Promise.all([
-    client.readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "owner" }) as Promise<Address>,
-    client.readContract({
-      address: portfolio,
-      abi: airspacePortfolioAbi,
-      functionName: "collateralToken",
-    }) as Promise<Address>,
-    client.readContract({ address: portfolio, abi: airspacePortfolioAbi, functionName: "VERSION" }) as Promise<string>,
-  ]);
-
-  const { data } = await db
-    .from("portfolios")
-    .upsert(
-      {
-        chain_id: cid,
-        portfolio_address: portfolio,
-        owner_address: owner.toLowerCase(),
-        factory_address: factory,
-        implementation_version: version,
-        collateral_address: collateral.toLowerCase(),
-      },
-      { onConflict: "chain_id,portfolio_address" },
-    )
-    .select("id")
-    .maybeSingle();
-
-  return (data?.id as string) ?? null;
-}
 
 const REFUSED_SELECTOR = toFunctionSelector("Refused(uint8)");
 
@@ -839,317 +781,103 @@ function decodeRefusal(err: unknown): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Receipts, intents, reservations, positions — paginated projections
+// Intents, receipts, reservations, positions — derived from the portfolio's own logs
 // ---------------------------------------------------------------------------
 
-const page = (c: Context<Ctx>) => {
-  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 25), 1), 100);
-  const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
-  return { limit, offset };
-};
-
-async function portfolioRow(env: Env, address: string) {
-  const db = createPublicDb(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
-  const { data } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("portfolio_address", address.toLowerCase())
-    .maybeSingle();
-  return { db, id: data?.id as string | undefined };
+/**
+ * Pass one of the portfolio Durable Object's views straight through.
+ *
+ * Every row behind these routes is decoded from the portfolio's own events and
+ * then re-measured against the contract (reservations against `orderRec` and
+ * the venue, positions against the outcome token). No database is consulted,
+ * so none can be down, stale, or full.
+ */
+async function viewResponse(env: Env, address: string, kind: string, params: Record<string, string>): Promise<Response> {
+  const q = new URLSearchParams({ portfolio: address, kind, ...params });
+  const res = await portfolioStub(env, address).fetch(`https://do/view?${q.toString()}`);
+  return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
 }
 
-/**
- * Every `numeric(78, 0)` column, per table.
- *
- * PostgREST serialises `numeric` as a JSON NUMBER, so a value above 2^53 arrives
- * at the client already wrong: an order id of 239807672958224550581 comes back
- * as 239807672958224560000. Selecting these `::text` keeps them exact all the
- * way to the browser, where they become BigInt.
- */
-const NUMERIC_COLUMNS: Record<string, readonly string[]> = {
-  intents: ["price", "quantity", "order_id"],
-  receipts: [
-    "reserve_required",
-    "filled_qty",
-    "filled_cost",
-    "resting_qty",
-    "directional_before",
-    "directional_after",
-    "domain_usage_before",
-    "domain_usage_after",
-    "committed_after",
-  ],
-  reservations: ["qty_open", "collateral_reserved"],
-  positions: ["yes_balance", "no_balance", "directional_exposure"],
-};
-
-/** `*` plus a text cast for each numeric column, which overrides the `*` copy. */
-const selectFor = (table: string): string =>
-  ["*", ...(NUMERIC_COLUMNS[table] ?? []).map((col) => `${col}::text`)].join(",");
-
-for (const [route, table, order] of [
-  ["intents", "intents", "block_number"],
-  ["receipts", "receipts", "block_number"],
-  ["reservations", "reservations", "source_block"],
-  ["positions", "positions", "source_block"],
-] as const) {
+for (const route of ["intents", "receipts", "reservations", "positions"] as const) {
   app.get(`/api/portfolios/:address/${route}`, async (c) => {
     const address = c.req.param("address");
     if (!isAddress(address)) return bad(c, "invalid portfolio address");
-    const { db, id } = await portfolioRow(c.env, address);
-    if (!id) return c.json({ [route]: [], total: 0, note: "portfolio not yet indexed" });
 
-    const { limit, offset } = page(c);
-    let q = db.from(table).select(selectFor(table), { count: "exact" }).eq("portfolio_id", id);
+    const params: Record<string, string> = {};
+    for (const k of ["limit", "offset"] as const) {
+      const v = c.req.query(k);
+      if (v && /^\d+$/.test(v)) params[k] = v;
+    }
     const agent = c.req.query("agent");
-    if (agent && isAddress(agent)) q = q.eq("agent_address", agent.toLowerCase());
+    if (agent && isAddress(agent)) params.agent = agent.toLowerCase();
     const status = c.req.query("status");
-    if (status && table === "intents") q = q.eq("status", status);
+    if (status === "ADMITTED" || status === "REFUSED") params.status = status;
 
-    const { data, count } = await q.order(order, { ascending: false }).range(offset, offset + limit - 1);
-    return c.json({ [route]: data ?? [], total: count ?? 0, limit, offset });
+    return viewResponse(c.env, address, route, params);
   });
 }
+
+// ---------------------------------------------------------------------------
+// History status — is the event store caught up, and does it explain the chain?
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the activity, reservation and position views can be trusted right now.
+ *
+ * Two independent checks, both against the chain:
+ *
+ *   1. Coverage: has the event store read up to the head? A portfolio deployed
+ *      days ago is still loading its history for a few minutes after its first
+ *      visit, and the views say so rather than presenting a partial list as whole.
+ *   2. Integrity: do the open reservations the events describe add up to the
+ *      collateral the portfolio itself reports as reserved? A mismatch on a
+ *      fully-loaded history is a real discrepancy, not a loading state.
+ */
+app.get("/api/portfolios/:address/history-status", async (c) => {
+  const address = c.req.param("address");
+  if (!isAddress(address)) return bad(c, "invalid portfolio address");
+  return viewResponse(c.env, address, "integrity", {});
+});
 
 // ---------------------------------------------------------------------------
 // Reconciliation truth — what the domain is carrying that a permissionless
 // release could clear, and how close each domain is to its own limits.
 // ---------------------------------------------------------------------------
 
-/** A reservation still open enough to matter. Terminal states are history. */
-const OPEN_RESERVATION_STATES = ["RESERVED", "PLACED", "PARTIAL", "RESTING", "NEEDS_RECONCILIATION"] as const;
-
 /**
  * Reconciliation and headroom summary, per requested domain.
  *
  * `independentWorstCase` is NOT read from the contract's `domainRiskUsage()`.
- * It is rebuilt from the indexer's own projections — `positions` (ERC-6909
- * balances, read live by the indexer) and `reservations` (event-sourced from
- * `IntentAdmitted` / `ReservationReleased`) — run through `@airspace/risk`'s
- * `domainRiskUsage`, a SEPARATE implementation from the Solidity one. It is
- * independent of the contract's own accounting, though it still depends on the
- * indexer having caught up; `scripts/risk-verifier.mjs` is the stronger check,
- * probing the venue directly order by order, and is what the long-run verifier
- * evidence in `evidence/production/` is built from.
+ * It is rebuilt from the outcome token's own balances and the contract's own
+ * `orderRec` reservations, run through `@airspace/risk`'s `domainRiskUsage` — a
+ * SEPARATE implementation from the Solidity one. `scripts/risk-verifier.mjs` is
+ * the stronger check, probing the venue order by order.
  */
 app.get("/api/portfolios/:address/reconciliation", async (c) => {
   const address = c.req.param("address");
   if (!isAddress(address)) return bad(c, "invalid portfolio address");
-  const domains = (c.req.query("domains") ?? "").split(",").filter(Boolean) as DomainId[];
+  const domains = (c.req.query("domains") ?? "").split(",").filter(isBytes32);
   if (domains.length === 0) return c.json({ domains: [] });
-
-  // Service role: `reconciliation_jobs` is not a public table, and this
-  // endpoint returns only aggregated, already-public numbers — no row from it
-  // reaches the response verbatim.
-  const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: pf } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("portfolio_address", address.toLowerCase())
-    .maybeSingle();
-  if (!pf) return c.json({ domains: domains.map((domain) => emptyReconciliation(domain)), note: "portfolio not yet indexed" });
-
-  const client = publicClient(c.env);
-  const cap = (await client
-    .readContract({ address: address as Address, abi: airspacePortfolioAbi, functionName: "MAX_MARKETS_PER_DOMAIN" })
-    .catch(() => 48n)) as bigint;
-
-  const out = await Promise.all(
-    domains.map(async (domain) => {
-      const [pending, lastDone, tracked, positions, reservations] = await Promise.all([
-        db
-          .from("reservations")
-          .select("qty_open,updated_at")
-          .eq("portfolio_id", pf.id)
-          .eq("domain_hash", domain)
-          .eq("state", "NEEDS_RECONCILIATION"),
-        db
-          .from("reconciliation_jobs")
-          .select("updated_at")
-          .eq("portfolio_id", pf.id)
-          .eq("domain_hash", domain)
-          .eq("status", "DONE")
-          .order("updated_at", { ascending: false })
-          .limit(1),
-        client.readContract({
-          address: address as Address,
-          abi: airspacePortfolioAbi,
-          functionName: "domainMarketCount",
-          args: [domain],
-        }) as Promise<bigint>,
-        db
-          .from("positions")
-          .select("market_id,yes_balance,no_balance,settled")
-          .eq("portfolio_id", pf.id)
-          .eq("domain_hash", domain),
-        db
-          .from("reservations")
-          .select("market_id,kind,qty_open")
-          .eq("portfolio_id", pf.id)
-          .eq("domain_hash", domain)
-          .in("state", OPEN_RESERVATION_STATES),
-      ]);
-
-      const pendingRows = pending.data ?? [];
-      const pendingAmount = pendingRows.reduce((a, r) => a + BigInt(r.qty_open as string), 0n);
-      const oldestMs = pendingRows.length
-        ? Math.min(...pendingRows.map((r) => new Date(r.updated_at as string).getTime()))
-        : null;
-
-      return {
-        domain,
-        pendingReleaseCount: pendingRows.length,
-        pendingReleaseAmount: pendingAmount.toString(),
-        oldestPendingReleaseAgeSec: oldestMs !== null ? Math.max(0, Math.floor((Date.now() - oldestMs) / 1000)) : null,
-        lastReconciledAt: (lastDone.data?.[0]?.updated_at as string | undefined) ?? null,
-        marketsTracked: Number(tracked ?? 0n),
-        marketsCap: Number(cap),
-        independentWorstCase: reconstructDomainWorstCase(positions.data ?? [], reservations.data ?? []).toString(),
-      };
-    }),
-  );
-
-  return c.json({ domains: out });
+  return viewResponse(c.env, address, "reconciliation", { domains: domains.slice(0, 32).join(",") });
 });
-
-function emptyReconciliation(domain: DomainId) {
-  return {
-    domain,
-    pendingReleaseCount: 0,
-    pendingReleaseAmount: "0",
-    oldestPendingReleaseAgeSec: null,
-    lastReconciledAt: null,
-    marketsTracked: 0,
-    marketsCap: 48,
-    independentWorstCase: "0",
-  };
-}
-
-/** Reservation `kind` -> the MarketPosition field it opens. */
-const RESERVATION_FIELD = ["yesLong", "yesShort", "noLong", "noShort"] as const;
-
-function reconstructDomainWorstCase(
-  positions: Array<{ market_id: string; yes_balance: string; no_balance: string; settled: boolean }>,
-  reservations: Array<{ market_id: string; kind: number; qty_open: string }>,
-): bigint {
-  const byMarket = new Map<string, MarketPosition>();
-  const get = (marketId: string): MarketPosition => {
-    let m = byMarket.get(marketId);
-    if (!m) {
-      m = {
-        marketId: marketId as MarketId,
-        yesBalance: 0n,
-        noBalance: 0n,
-        yesLong: 0n,
-        yesShort: 0n,
-        noLong: 0n,
-        noShort: 0n,
-        settled: false,
-      };
-      byMarket.set(marketId, m);
-    }
-    return m;
-  };
-
-  for (const p of positions) {
-    const m = get(p.market_id);
-    m.yesBalance = BigInt(p.yes_balance);
-    m.noBalance = BigInt(p.no_balance);
-    m.settled = p.settled;
-  }
-  for (const r of reservations) {
-    const m = get(r.market_id);
-    const field = RESERVATION_FIELD[r.kind];
-    if (field) m[field] += BigInt(r.qty_open);
-  }
-
-  return independentDomainRiskUsage([...byMarket.values()]);
-}
 
 app.get("/api/receipts/:intentHash", async (c) => {
   const h = c.req.param("intentHash");
   if (!isBytes32(h)) return bad(c, "invalid intent hash");
-  const db = createPublicDb(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY);
-  const [{ data }, { data: intentRow }] = await Promise.all([
-    db.from("receipts").select(selectFor("receipts")).eq("intent_hash", h).maybeSingle(),
-    // The order's own shape — side, price, quantity, the resulting DreamDEX
-    // order id — lives on `intents`, not `receipts`: two tables sharing one
-    // key, not two representations of the same row.
-    db.from("intents").select(selectFor("intents")).eq("intent_hash", h).maybeSingle(),
-  ]);
-  if (!data) return c.json({ error: "RECEIPT_NOT_FOUND" }, 404);
+  const portfolio = c.req.query("portfolio");
+  if (!isAddress(portfolio)) return bad(c, "portfolio query parameter is required");
 
-  // The `::text` casts put the row outside supabase-js's generated row type, so
-  // it comes back untyped. The shape is the `receipts` table, minus the numeric
-  // columns which are now strings.
-  const receipt = data as unknown as Record<string, unknown>;
-  const intent = intentRow as unknown as Record<string, unknown> | null;
-  const refusal = receipt.refusal_code as number | null;
+  const res = await viewResponse(c.env, portfolio, "receipt", { hash: h });
+  if (!res.ok) return res;
+
+  const body = (await res.json()) as { receipt: { refusal_code: number | null }; order: unknown };
+  const refusal = body.receipt.refusal_code;
   return c.json({
-    receipt,
-    order: intent
-      ? { kind: intent.kind, price: intent.price, quantity: intent.quantity, orderId: intent.order_id, poolAddress: intent.pool_address }
-      : null,
+    receipt: body.receipt,
+    order: body.order,
     copy: refusal ? (REFUSAL_COPY[refusal] ?? null) : null,
     refusalName: refusal ? (REFUSAL_NAME[refusal] ?? null) : null,
   });
-});
-
-// ---------------------------------------------------------------------------
-// Reconciliation request — enqueue work, never mutate authority
-// ---------------------------------------------------------------------------
-
-const RECONCILE_KINDS = ["release-order", "release-settled", "prune-market", "sync-portfolio", "sync-positions"] as const;
-type ReconcileKind = (typeof RECONCILE_KINDS)[number];
-
-/**
- * Enqueue a PERMISSIONLESS lifecycle job. This never mutates authority: it adds
- * one row the public keeper is already polling for, the same row any observer
- * could insert by calling `releaseOrder` / `pruneMarket` themselves. An
- * explicit `kind` lets the UI ask for exactly the operation it names — "Prune
- * now" must queue `prune-market`, not whatever an inferred default would pick.
- * Omitting `kind` keeps the previous inference for backward compatibility.
- */
-app.post("/api/reconcile/request", async (c) => {
-  const body = await c.req.json<{
-    portfolio: string;
-    marketId?: string;
-    orderKey?: string;
-    domain?: string;
-    kind?: string;
-    reason?: string;
-  }>();
-  if (!isAddress(body.portfolio)) return bad(c, "invalid portfolio address");
-  if (body.kind !== undefined && !RECONCILE_KINDS.includes(body.kind as ReconcileKind)) {
-    return bad(c, `kind must be one of ${RECONCILE_KINDS.join(", ")}`);
-  }
-
-  const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: pf } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("portfolio_address", body.portfolio.toLowerCase())
-    .maybeSingle();
-
-  const kind: ReconcileKind =
-    (body.kind as ReconcileKind | undefined) ??
-    (body.orderKey ? "release-order" : body.marketId ? "release-settled" : "sync-portfolio");
-
-  // The dedupe index collapses identical pending work, so a client cannot flood
-  // the queue by retrying.
-  const { error } = await db.from("reconciliation_jobs").insert({
-    portfolio_id: pf?.id ?? null,
-    chain_id: chainId(c.env),
-    kind,
-    market_id: body.marketId ?? null,
-    domain_hash: body.domain ?? null,
-    order_key: body.orderKey ?? null,
-    reason: body.reason ?? "client-request",
-  });
-
-  // A duplicate-key error means the work is already queued: that is success.
-  const duplicated = error?.code === "23505";
-  return c.json({ queued: !error || duplicated, deduplicated: duplicated, kind });
 });
 
 // ---------------------------------------------------------------------------
