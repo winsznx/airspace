@@ -1,7 +1,8 @@
 import type { Address, DomainId } from "@airspace/types";
 import { airspacePortfolioAbi } from "@airspace/sdk";
 import type { Env, ReconcileJob } from "./env.js";
-import { publicClient, isTransportError } from "./rpc.js";
+import { publicClient, isTransportError, verifiedFactory } from "./rpc.js";
+import { SupersededDeploymentError } from "@airspace/sdk";
 
 /**
  * PortfolioCoordinator — one Durable Object per portfolio.
@@ -67,27 +68,34 @@ export class PortfolioCoordinator implements DurableObject {
       return this.handleWebSocket(url);
     }
 
-    switch (url.pathname) {
-      case "/snapshot": {
-        const portfolio = url.searchParams.get("portfolio") as Address | null;
-        const domains = (url.searchParams.get("domains") ?? "")
-          .split(",")
-          .filter(Boolean) as DomainId[];
-        for (const d of domains) this.watchedDomains.add(d);
-        if (!portfolio) return json({ error: "portfolio required" }, 400);
+    try {
+      switch (url.pathname) {
+        case "/snapshot": {
+          const portfolio = url.searchParams.get("portfolio") as Address | null;
+          const domains = (url.searchParams.get("domains") ?? "")
+            .split(",")
+            .filter(Boolean) as DomainId[];
+          for (const d of domains) this.watchedDomains.add(d);
+          if (!portfolio) return json({ error: "portfolio required" }, 400);
 
-        const snap = await this.refresh(portfolio, { force: url.searchParams.get("force") === "1" });
-        return json(snap);
+          const snap = await this.refresh(portfolio, { force: url.searchParams.get("force") === "1" });
+          return json(snap);
+        }
+        case "/invalidate": {
+          // A confirmed transaction touched this portfolio: refresh promptly so
+          // connected browsers see the new state without waiting for the alarm.
+          const portfolio = url.searchParams.get("portfolio") as Address | null;
+          if (portfolio) await this.refresh(portfolio, { force: true });
+          return json({ ok: true });
+        }
+        default:
+          return json({ error: "not found" }, 404);
       }
-      case "/invalidate": {
-        // A confirmed transaction touched this portfolio: refresh promptly so
-        // connected browsers see the new state without waiting for the alarm.
-        const portfolio = url.searchParams.get("portfolio") as Address | null;
-        if (portfolio) await this.refresh(portfolio, { force: true });
-        return json({ ok: true });
+    } catch (e) {
+      if (e instanceof SupersededDeploymentError) {
+        return json({ error: "SUPERSEDED_DEPLOYMENT", message: e.message }, 500);
       }
-      default:
-        return json({ error: "not found" }, 404);
+      throw e;
     }
   }
 
@@ -154,6 +162,14 @@ export class PortfolioCoordinator implements DurableObject {
       await this.scheduleAlarm();
       return snap;
     } catch (e) {
+      // A superseded implementation is not something a "stale" badge can
+      // honestly describe: it isn't old data, it would be WRONG data. Fail the
+      // whole request rather than falling back to a cached snapshot, and never
+      // cache the superseded verdict as though it were a portfolio reading.
+      if (e instanceof SupersededDeploymentError) {
+        this.broadcast({ type: "error", data: { code: "SUPERSEDED_DEPLOYMENT", message: e.message } });
+        throw e;
+      }
       // Serve the last good snapshot, explicitly marked stale. A UI showing an
       // old number honestly is far safer than one showing nothing or guessing.
       const reason = isTransportError(e) ? "rpc-unavailable" : "read-failed";
@@ -173,6 +189,10 @@ export class PortfolioCoordinator implements DurableObject {
   }
 
   private async read(portfolio: Address): Promise<PortfolioSnapshot> {
+    // Fails loud (SupersededDeploymentError) if AIRSPACE_FACTORY resolves to a
+    // deployment this repository has proven unsafe. Memoized per isolate.
+    await verifiedFactory(this.env);
+
     const client = publicClient(this.env);
     const chainId = Number(this.env.CHAIN_ID ?? 50312);
 

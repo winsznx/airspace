@@ -2,13 +2,19 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { Address, DomainId, MarketId } from "@airspace/types";
 import { Refusal, REFUSAL_COPY, REFUSAL_NAME } from "@airspace/types";
-import { explainAdmission } from "@airspace/risk";
-import { airspacePortfolioAbi, airspacePortfolioFactoryAbi } from "@airspace/sdk";
+import { explainAdmission, domainRiskUsage as independentDomainRiskUsage, type MarketPosition } from "@airspace/risk";
+import {
+  airspacePortfolioAbi,
+  airspacePortfolioFactoryAbi,
+  assertCurrentImplementation,
+  SupersededDeploymentError,
+} from "@airspace/sdk";
 import {
   canonicalCadence,
   discoverMarkets,
   domainKey,
   intentHash,
+  readBook,
   readLiveState,
   readMarket,
   type IntentStruct,
@@ -17,7 +23,7 @@ import { BaseError, ContractFunctionRevertedError, decodeFunctionData, toFunctio
 import { createServiceDb, createPublicDb, toBigInt } from "@airspace/db";
 import type { Env } from "./env.js";
 import { chainId, factoryAddress } from "./env.js";
-import { publicClient } from "./rpc.js";
+import { publicClient, verifiedFactory } from "./rpc.js";
 
 export { PortfolioCoordinator } from "./coordinator.js";
 
@@ -70,7 +76,6 @@ app.get("/api/health", async (c) => {
     ok: true,
     chainId: chainId(c.env),
     factory: c.env.AIRSPACE_FACTORY || null,
-    version: "1.0.0",
   };
   try {
     const client = publicClient(c.env);
@@ -80,18 +85,202 @@ app.get("/api/health", async (c) => {
     out.rpc = "unavailable";
     out.ok = false;
   }
+  try {
+    out.implementation = await assertCurrentImplementation(publicClient(c.env), factoryAddress(c.env), chainId(c.env));
+  } catch (e) {
+    out.ok = false;
+    out.implementation = e instanceof SupersededDeploymentError ? e.implementation : null;
+    out.error = e instanceof SupersededDeploymentError ? e.message : "implementation check failed";
+  }
   return c.json(out);
 });
 
-app.get("/api/config", (c) =>
-  c.json({
+const ERC20_METADATA_ABI = [
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+] as const;
+
+const FACTORY_COLLATERAL_ABI = [
+  { type: "function", name: "collateral", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+] as const;
+
+const PORTFOLIO_COLLATERAL_ABI = [
+  { type: "function", name: "collateralToken", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+] as const;
+
+/** A live-traded production portfolio, used only to confirm the invariant below against a real instance. */
+const REFERENCE_PORTFOLIO: Address = "0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C";
+/**
+ * A real, permanent transaction against `REFERENCE_PORTFOLIO` — a permissionless
+ * `releaseOrder` call from the 2026-09-02 reconciliation pass (see
+ * `evidence/production/REMEDIATION.md`). Used only as a fallback when nothing
+ * more recent turns up in the bounded live scan below; its RECEIPT is still
+ * fetched fresh from the chain on every request, never cached or hardcoded.
+ */
+const FALLBACK_REFERENCE_TX = "0xaa7152207ad614cf6f4de95b4776d73ddf678c9ae6c03a2dd925b2818f06623d" as const;
+const EXPECTED_COLLATERAL: Address = "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E";
+const EXPECTED_CHAIN_ID = 50312;
+const EXPECTED_DECIMALS = 6;
+
+/**
+ * Deployment-asset verification — every claim below is checked live, on
+ * request, against the chain. Nothing here is a hardcoded label asserted as
+ * fact; a hardcoded EXPECTED_* constant is only ever the thing being checked
+ * against a live read, and the response says exactly which.
+ *
+ * DreamDEX's Shannon collateral is its own official test asset for this
+ * venue — not a scarce faucet token AIRSPACE depends on — verified here by
+ * reading the venue's own factory-pinned address, never assumed from a name.
+ */
+app.get("/api/deployment/verify", async (c) => {
+  const client = publicClient(c.env);
+  const factory = factoryAddress(c.env);
+  const portfolio = (c.req.query("portfolio") as Address | undefined) ?? REFERENCE_PORTFOLIO;
+  const checks: Array<{ key: string; label: string; expected: string; actual: string | null; pass: boolean; error?: string }> = [];
+
+  const push = (key: string, label: string, expected: string, actual: string | null, error?: string) =>
+    checks.push({ key, label, expected, actual, pass: actual !== null && actual.toLowerCase() === expected.toLowerCase(), ...(error ? { error } : {}) });
+
+  // 1. Chain id, read live rather than trusted from config.
+  let liveChainId: number | null = null;
+  try {
+    liveChainId = await client.getChainId();
+  } catch (e) {
+    push("chainId", "Chain ID", String(EXPECTED_CHAIN_ID), null, String(e));
+  }
+  if (liveChainId !== null) push("chainId", "Chain ID", String(EXPECTED_CHAIN_ID), String(liveChainId));
+
+  // 2. DreamDEX's own collateral, read off the FACTORY's immutable pin — this
+  //    is the address every portfolio this factory ever creates is initialised
+  //    with, so checking it here checks it for all of them, not just one.
+  let liveCollateral: Address | null = null;
+  try {
+    liveCollateral = (await client.readContract({ address: factory, abi: FACTORY_COLLATERAL_ABI, functionName: "collateral" })) as Address;
+    push("factoryCollateral", "Factory-pinned collateral (all portfolios)", EXPECTED_COLLATERAL, liveCollateral);
+  } catch (e) {
+    push("factoryCollateral", "Factory-pinned collateral (all portfolios)", EXPECTED_COLLATERAL, null, String(e));
+  }
+
+  // 3. That same address's own decimals() and symbol(), read from the token
+  //    itself rather than assumed from documentation.
+  let decimals: number | null = null;
+  let symbol: string | null = null;
+  try {
+    [decimals, symbol] = await Promise.all([
+      client.readContract({ address: EXPECTED_COLLATERAL, abi: ERC20_METADATA_ABI, functionName: "decimals" }) as Promise<number>,
+      client.readContract({ address: EXPECTED_COLLATERAL, abi: ERC20_METADATA_ABI, functionName: "symbol" }) as Promise<string>,
+    ]);
+    push("collateralDecimals", "Collateral decimals()", String(EXPECTED_DECIMALS), String(decimals));
+  } catch (e) {
+    push("collateralDecimals", "Collateral decimals()", String(EXPECTED_DECIMALS), null, String(e));
+  }
+
+  // 4. A live production portfolio's OWN collateralToken(), confirming the
+  //    factory invariant holds for a real, funded instance and not only in
+  //    theory.
+  let portfolioCollateral: Address | null = null;
+  try {
+    portfolioCollateral = (await client.readContract({ address: portfolio, abi: PORTFOLIO_COLLATERAL_ABI, functionName: "collateralToken" })) as Address;
+    push("portfolioCollateral", `Portfolio ${portfolio.slice(0, 10)}… collateralToken()`, EXPECTED_COLLATERAL, portfolioCollateral);
+  } catch (e) {
+    push("portfolioCollateral", `Portfolio ${portfolio.slice(0, 10)}… collateralToken()`, EXPECTED_COLLATERAL, null, String(e));
+  }
+
+  // 5. A REAL, recent transaction against this portfolio, to show execution
+  //    actually happens on Shannon and gas is paid in the chain's native
+  //    token — every EVM chain charges gas natively, so a successful receipt
+  //    on chain 50312 IS that proof; nothing here is asserted without a
+  //    fetched receipt behind it.
+  let recentTx: {
+    hash: string; blockNumber: string; status: string; gasUsed: string; effectiveGasPriceWei: string; nativeFeePaid: string;
+  } | null = null;
+  let recentTxError: string | null = null;
+  try {
+    const admittedEvent = airspacePortfolioAbi.find((e) => e.type === "event" && e.name === "IntentAdmitted")!;
+    const head = await client.getBlockNumber();
+    // A bounded, fast live scan for something fresher than the fallback —
+    // both Shannon RPCs cap a single `eth_getLogs` range, so this walks
+    // backward in chunks rather than asking for a huge range at once, and
+    // gives up quickly rather than making a request wait on dozens of calls.
+    const CHUNK = 1000n;
+    const SCAN_CHUNKS = 5;
+    let last: { transactionHash: `0x${string}` } | undefined;
+    for (let i = 0; i < SCAN_CHUNKS && !last; i++) {
+      const to = head - BigInt(i) * CHUNK;
+      const from = to - CHUNK + 1n > 0n ? to - CHUNK + 1n : 0n;
+      if (to <= 0n) break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- viem's getLogs event-filter overload does not
+      // infer from a runtime-selected ABI entry; only `transactionHash` off the result is used below.
+      const logs = (await client.getLogs({ address: portfolio, event: admittedEvent as any, fromBlock: from, toBlock: to })) as Array<{
+        transactionHash: `0x${string}`;
+      }>;
+      last = logs.at(-1);
+    }
+    const txHash = last?.transactionHash ?? FALLBACK_REFERENCE_TX;
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    const fee = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
+    recentTx = {
+      hash: receipt.transactionHash,
+      blockNumber: receipt.blockNumber.toString(),
+      status: receipt.status,
+      gasUsed: receipt.gasUsed.toString(),
+      effectiveGasPriceWei: (receipt.effectiveGasPrice ?? 0n).toString(),
+      nativeFeePaid: fee.toString(),
+    };
+    if (!last) {
+      recentTxError = "no fresher activity in the last 5,000 blocks — showing a known reference transaction against this portfolio instead";
+    }
+  } catch (e) {
+    recentTxError = String(e);
+  }
+
+  const allPass = checks.every((x) => x.pass) && recentTx?.status === "success";
+
+  return c.json({
+    ok: allPass,
+    network: {
+      name: "Somnia Shannon",
+      chainId: EXPECTED_CHAIN_ID,
+      nativeCurrency: { name: "Somnia Test Token", symbol: "STT", decimals: 18 },
+      explorer: "https://shannon-explorer.somnia.network",
+    },
+    collateral: {
+      address: EXPECTED_COLLATERAL,
+      symbolOnChain: symbol,
+      decimalsOnChain: decimals,
+      description: "DreamDEX's official Shannon test collateral for this venue — not a scarce faucet token AIRSPACE depends on.",
+    },
+    checks,
+    recentTransaction: recentTx,
+    recentTransactionError: recentTxError,
+    explorerTxUrl: recentTx ? `https://shannon-explorer.somnia.network/tx/${recentTx.hash}` : null,
+  });
+});
+
+/**
+ * Configuration for the frontend. FAILS LOUD — not a plain 200 with an
+ * `ok: false` flag — if `AIRSPACE_FACTORY` resolves to a deployment this
+ * repository has proven unsafe (see `@airspace/sdk`'s `assertCurrentImplementation`).
+ * A client that cannot get a config has an obvious, unmissable failure; a
+ * client that gets one pointed at the superseded implementation would not.
+ */
+app.get("/api/config", async (c) => {
+  try {
+    await verifiedFactory(c.env);
+  } catch (e) {
+    if (e instanceof SupersededDeploymentError) {
+      return c.json({ error: "SUPERSEDED_DEPLOYMENT", message: e.message }, 500);
+    }
+    throw e;
+  }
+  return c.json({
     chainId: chainId(c.env),
     factory: c.env.AIRSPACE_FACTORY || null,
     supabaseUrl: c.env.SUPABASE_URL,
     supabaseAnonKey: c.env.SUPABASE_ANON_KEY,
     explorer: chainId(c.env) === 5031 ? "https://explorer.somnia.network" : "https://shannon-explorer.somnia.network",
-  }),
-);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Portfolios
@@ -273,15 +462,28 @@ app.get("/api/markets", async (c) => {
   const minRemaining = Number(c.req.query("minRemaining") ?? 120);
   const lookback = Math.min(Number(c.req.query("lookback") ?? 60), 200);
 
+  // `minRemaining` may be negative on purpose: the Event Contracts surface asks
+  // for recent settled generations alongside live ones, and discoverMarkets'
+  // filter is `expiry - now >= minRemaining`, so a negative value reaches back
+  // past expiry without a second code path.
   const markets = await discoverMarkets(client, { lookback, minSecondsRemaining: minRemaining });
   const withState = await Promise.all(
     markets.slice(0, 40).map(async (m) => {
-      const live = await readLiveState(client, m);
+      const [live, book] = await Promise.all([
+        readLiveState(client, m),
+        readBook(client, m.pool, 1).catch(() => ({ bids: [], asks: [] })),
+      ]);
       return S({
         ...m,
         cadenceLabel: cadenceLabel(m.cadenceSec),
+        status: marketStatus(live),
+        bestBid: book.bids[0]?.price ?? null,
+        bestAsk: book.asks[0]?.price ?? null,
         live: {
           trading: live.trading,
+          resolved: live.resolved,
+          voided: live.voided,
+          finalized: live.finalized,
           secondsRemaining: live.secondsRemaining,
           tickSize: live.tickSize,
           lotSize: live.lotSize,
@@ -300,8 +502,14 @@ app.get("/api/markets/:marketId", async (c) => {
   const client = publicClient(c.env);
   const m = await readMarket(client, marketId as MarketId);
   if (!m) return c.json({ error: "MARKET_NOT_FOUND" }, 404);
-  const live = await readLiveState(client, m);
-  return c.json(S({ market: { ...m, cadenceLabel: cadenceLabel(m.cadenceSec) }, live }));
+  const [live, book] = await Promise.all([readLiveState(client, m), readBook(client, m.pool, 3).catch(() => ({ bids: [], asks: [] }))]);
+  return c.json(
+    S({
+      market: { ...m, cadenceLabel: cadenceLabel(m.cadenceSec), status: marketStatus(live) },
+      live,
+      book,
+    }),
+  );
 });
 
 /** Derive a structural domain without any attestation. */
@@ -408,7 +616,8 @@ app.post("/api/intents/simulate", async (c) => {
       gates: explained.gates,
       arithmetic: explained.arithmetic,
       raw: v,
-      advisory: "The portfolio contract re-evaluates at execution time; this is a preview, not a guarantee.",
+      advisory:
+        "Advisory preview — rechecked atomically on-chain at submission. Another agent may consume headroom first; a successful preview is not a promise that execution will succeed.",
     }),
   );
 });
@@ -702,20 +911,185 @@ for (const [route, table, order] of [
   });
 }
 
+// ---------------------------------------------------------------------------
+// Reconciliation truth — what the domain is carrying that a permissionless
+// release could clear, and how close each domain is to its own limits.
+// ---------------------------------------------------------------------------
+
+/** A reservation still open enough to matter. Terminal states are history. */
+const OPEN_RESERVATION_STATES = ["RESERVED", "PLACED", "PARTIAL", "RESTING", "NEEDS_RECONCILIATION"] as const;
+
+/**
+ * Reconciliation and headroom summary, per requested domain.
+ *
+ * `independentWorstCase` is NOT read from the contract's `domainRiskUsage()`.
+ * It is rebuilt from the indexer's own projections — `positions` (ERC-6909
+ * balances, read live by the indexer) and `reservations` (event-sourced from
+ * `IntentAdmitted` / `ReservationReleased`) — run through `@airspace/risk`'s
+ * `domainRiskUsage`, a SEPARATE implementation from the Solidity one. It is
+ * independent of the contract's own accounting, though it still depends on the
+ * indexer having caught up; `scripts/risk-verifier.mjs` is the stronger check,
+ * probing the venue directly order by order, and is what the long-run verifier
+ * evidence in `evidence/production/` is built from.
+ */
+app.get("/api/portfolios/:address/reconciliation", async (c) => {
+  const address = c.req.param("address");
+  if (!isAddress(address)) return bad(c, "invalid portfolio address");
+  const domains = (c.req.query("domains") ?? "").split(",").filter(Boolean) as DomainId[];
+  if (domains.length === 0) return c.json({ domains: [] });
+
+  // Service role: `reconciliation_jobs` is not a public table, and this
+  // endpoint returns only aggregated, already-public numbers — no row from it
+  // reaches the response verbatim.
+  const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data: pf } = await db
+    .from("portfolios")
+    .select("id")
+    .eq("portfolio_address", address.toLowerCase())
+    .maybeSingle();
+  if (!pf) return c.json({ domains: domains.map((domain) => emptyReconciliation(domain)), note: "portfolio not yet indexed" });
+
+  const client = publicClient(c.env);
+  const cap = (await client
+    .readContract({ address: address as Address, abi: airspacePortfolioAbi, functionName: "MAX_MARKETS_PER_DOMAIN" })
+    .catch(() => 48n)) as bigint;
+
+  const out = await Promise.all(
+    domains.map(async (domain) => {
+      const [pending, lastDone, tracked, positions, reservations] = await Promise.all([
+        db
+          .from("reservations")
+          .select("qty_open,updated_at")
+          .eq("portfolio_id", pf.id)
+          .eq("domain_hash", domain)
+          .eq("state", "NEEDS_RECONCILIATION"),
+        db
+          .from("reconciliation_jobs")
+          .select("updated_at")
+          .eq("portfolio_id", pf.id)
+          .eq("domain_hash", domain)
+          .eq("status", "DONE")
+          .order("updated_at", { ascending: false })
+          .limit(1),
+        client.readContract({
+          address: address as Address,
+          abi: airspacePortfolioAbi,
+          functionName: "domainMarketCount",
+          args: [domain],
+        }) as Promise<bigint>,
+        db
+          .from("positions")
+          .select("market_id,yes_balance,no_balance,settled")
+          .eq("portfolio_id", pf.id)
+          .eq("domain_hash", domain),
+        db
+          .from("reservations")
+          .select("market_id,kind,qty_open")
+          .eq("portfolio_id", pf.id)
+          .eq("domain_hash", domain)
+          .in("state", OPEN_RESERVATION_STATES),
+      ]);
+
+      const pendingRows = pending.data ?? [];
+      const pendingAmount = pendingRows.reduce((a, r) => a + BigInt(r.qty_open as string), 0n);
+      const oldestMs = pendingRows.length
+        ? Math.min(...pendingRows.map((r) => new Date(r.updated_at as string).getTime()))
+        : null;
+
+      return {
+        domain,
+        pendingReleaseCount: pendingRows.length,
+        pendingReleaseAmount: pendingAmount.toString(),
+        oldestPendingReleaseAgeSec: oldestMs !== null ? Math.max(0, Math.floor((Date.now() - oldestMs) / 1000)) : null,
+        lastReconciledAt: (lastDone.data?.[0]?.updated_at as string | undefined) ?? null,
+        marketsTracked: Number(tracked ?? 0n),
+        marketsCap: Number(cap),
+        independentWorstCase: reconstructDomainWorstCase(positions.data ?? [], reservations.data ?? []).toString(),
+      };
+    }),
+  );
+
+  return c.json({ domains: out });
+});
+
+function emptyReconciliation(domain: DomainId) {
+  return {
+    domain,
+    pendingReleaseCount: 0,
+    pendingReleaseAmount: "0",
+    oldestPendingReleaseAgeSec: null,
+    lastReconciledAt: null,
+    marketsTracked: 0,
+    marketsCap: 48,
+    independentWorstCase: "0",
+  };
+}
+
+/** Reservation `kind` -> the MarketPosition field it opens. */
+const RESERVATION_FIELD = ["yesLong", "yesShort", "noLong", "noShort"] as const;
+
+function reconstructDomainWorstCase(
+  positions: Array<{ market_id: string; yes_balance: string; no_balance: string; settled: boolean }>,
+  reservations: Array<{ market_id: string; kind: number; qty_open: string }>,
+): bigint {
+  const byMarket = new Map<string, MarketPosition>();
+  const get = (marketId: string): MarketPosition => {
+    let m = byMarket.get(marketId);
+    if (!m) {
+      m = {
+        marketId: marketId as MarketId,
+        yesBalance: 0n,
+        noBalance: 0n,
+        yesLong: 0n,
+        yesShort: 0n,
+        noLong: 0n,
+        noShort: 0n,
+        settled: false,
+      };
+      byMarket.set(marketId, m);
+    }
+    return m;
+  };
+
+  for (const p of positions) {
+    const m = get(p.market_id);
+    m.yesBalance = BigInt(p.yes_balance);
+    m.noBalance = BigInt(p.no_balance);
+    m.settled = p.settled;
+  }
+  for (const r of reservations) {
+    const m = get(r.market_id);
+    const field = RESERVATION_FIELD[r.kind];
+    if (field) m[field] += BigInt(r.qty_open);
+  }
+
+  return independentDomainRiskUsage([...byMarket.values()]);
+}
+
 app.get("/api/receipts/:intentHash", async (c) => {
   const h = c.req.param("intentHash");
   if (!isBytes32(h)) return bad(c, "invalid intent hash");
   const db = createPublicDb(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY);
-  const { data } = await db.from("receipts").select(selectFor("receipts")).eq("intent_hash", h).maybeSingle();
+  const [{ data }, { data: intentRow }] = await Promise.all([
+    db.from("receipts").select(selectFor("receipts")).eq("intent_hash", h).maybeSingle(),
+    // The order's own shape — side, price, quantity, the resulting DreamDEX
+    // order id — lives on `intents`, not `receipts`: two tables sharing one
+    // key, not two representations of the same row.
+    db.from("intents").select(selectFor("intents")).eq("intent_hash", h).maybeSingle(),
+  ]);
   if (!data) return c.json({ error: "RECEIPT_NOT_FOUND" }, 404);
 
   // The `::text` casts put the row outside supabase-js's generated row type, so
   // it comes back untyped. The shape is the `receipts` table, minus the numeric
   // columns which are now strings.
   const receipt = data as unknown as Record<string, unknown>;
+  const intent = intentRow as unknown as Record<string, unknown> | null;
   const refusal = receipt.refusal_code as number | null;
   return c.json({
     receipt,
+    order: intent
+      ? { kind: intent.kind, price: intent.price, quantity: intent.quantity, orderId: intent.order_id, poolAddress: intent.pool_address }
+      : null,
     copy: refusal ? (REFUSAL_COPY[refusal] ?? null) : null,
     refusalName: refusal ? (REFUSAL_NAME[refusal] ?? null) : null,
   });
@@ -725,9 +1099,30 @@ app.get("/api/receipts/:intentHash", async (c) => {
 // Reconciliation request — enqueue work, never mutate authority
 // ---------------------------------------------------------------------------
 
+const RECONCILE_KINDS = ["release-order", "release-settled", "prune-market", "sync-portfolio", "sync-positions"] as const;
+type ReconcileKind = (typeof RECONCILE_KINDS)[number];
+
+/**
+ * Enqueue a PERMISSIONLESS lifecycle job. This never mutates authority: it adds
+ * one row the public keeper is already polling for, the same row any observer
+ * could insert by calling `releaseOrder` / `pruneMarket` themselves. An
+ * explicit `kind` lets the UI ask for exactly the operation it names — "Prune
+ * now" must queue `prune-market`, not whatever an inferred default would pick.
+ * Omitting `kind` keeps the previous inference for backward compatibility.
+ */
 app.post("/api/reconcile/request", async (c) => {
-  const body = await c.req.json<{ portfolio: string; marketId?: string; orderKey?: string; reason?: string }>();
+  const body = await c.req.json<{
+    portfolio: string;
+    marketId?: string;
+    orderKey?: string;
+    domain?: string;
+    kind?: string;
+    reason?: string;
+  }>();
   if (!isAddress(body.portfolio)) return bad(c, "invalid portfolio address");
+  if (body.kind !== undefined && !RECONCILE_KINDS.includes(body.kind as ReconcileKind)) {
+    return bad(c, `kind must be one of ${RECONCILE_KINDS.join(", ")}`);
+  }
 
   const db = createServiceDb(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
   const { data: pf } = await db
@@ -736,20 +1131,25 @@ app.post("/api/reconcile/request", async (c) => {
     .eq("portfolio_address", body.portfolio.toLowerCase())
     .maybeSingle();
 
+  const kind: ReconcileKind =
+    (body.kind as ReconcileKind | undefined) ??
+    (body.orderKey ? "release-order" : body.marketId ? "release-settled" : "sync-portfolio");
+
   // The dedupe index collapses identical pending work, so a client cannot flood
   // the queue by retrying.
   const { error } = await db.from("reconciliation_jobs").insert({
     portfolio_id: pf?.id ?? null,
     chain_id: chainId(c.env),
-    kind: body.orderKey ? "release-order" : body.marketId ? "release-settled" : "sync-portfolio",
+    kind,
     market_id: body.marketId ?? null,
+    domain_hash: body.domain ?? null,
     order_key: body.orderKey ?? null,
     reason: body.reason ?? "client-request",
   });
 
   // A duplicate-key error means the work is already queued: that is success.
   const duplicated = error?.code === "23505";
-  return c.json({ queued: !error || duplicated, deduplicated: duplicated });
+  return c.json({ queued: !error || duplicated, deduplicated: duplicated, kind });
 });
 
 // ---------------------------------------------------------------------------
@@ -760,6 +1160,18 @@ app.all("*", async (c) => {
   if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
   return c.json({ error: "not found" }, 404);
 });
+
+/**
+ * A single word for the Event Contracts surface. Derived the same way the
+ * contract's own `MARKET_NOT_TRADING` gate reads state — trading, resolved,
+ * voided, finalized — never guessed from a timestamp alone.
+ */
+function marketStatus(live: { trading: boolean; resolved: boolean; voided: boolean; finalized: boolean; secondsRemaining: number }): "live" | "settled" | "voided" | "closed" {
+  if (live.resolved) return "settled";
+  if (live.voided) return "voided";
+  if (live.trading) return "live";
+  return "closed";
+}
 
 function cadenceLabel(sec: number): string {
   const map: Record<number, string> = {

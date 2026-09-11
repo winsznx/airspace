@@ -8,6 +8,8 @@ import {
   formatProbability,
   formatUnits,
   marketDirectionalExposure,
+  marketExposureBounds,
+  marketWorstCaseExposure,
   maximumLoss,
   onLot,
   onTick,
@@ -31,26 +33,20 @@ const mk = (p: Partial<MarketPosition>): MarketPosition => ({
   ...p,
 });
 
-describe("directional exposure", () => {
+describe("directional exposure (realized only, mirrors the contract getter of the same name)", () => {
   it("a complete YES+NO set carries zero directional risk", () => {
-    // The TAPE result: within one market YES and NO are complementary fixed
-    // payouts, so a matched pair is worth exactly one collateral unit either way.
+    // Within a market, YES and NO are complementary fixed payouts, so a
+    // matched pair is worth exactly one collateral unit either way.
     expect(marketDirectionalExposure(mk({ yesBalance: 100n, noBalance: 100n }))).toBe(0n);
   });
 
-  it("derives from the YES/NO imbalance", () => {
+  it("derives from the realized YES/NO imbalance", () => {
     expect(marketDirectionalExposure(mk({ yesBalance: 150n, noBalance: 100n }))).toBe(50n);
     expect(marketDirectionalExposure(mk({ yesBalance: 100n, noBalance: 150n }))).toBe(-50n);
   });
 
-  it("counts unfilled reservations as exposure that already exists", () => {
-    // A resting order that has not filled still carries the risk it will create.
-    expect(marketDirectionalExposure(mk({ yesLong: 80n }))).toBe(80n);
-    expect(marketDirectionalExposure(mk({ yesBalance: 20n, yesLong: 80n }))).toBe(100n);
-  });
-
-  it("a sell reservation reduces exposure", () => {
-    expect(marketDirectionalExposure(mk({ yesBalance: 100n, yesShort: 40n }))).toBe(60n);
+  it("ignores unfilled reservations entirely — they are not realized", () => {
+    expect(marketDirectionalExposure(mk({ yesBalance: 20n, yesLong: 80n, noShort: 40n }))).toBe(20n);
   });
 
   it("a settled market is a fixed claim, not a bet", () => {
@@ -58,8 +54,50 @@ describe("directional exposure", () => {
   });
 });
 
+describe("exposure bounds and worst case (this is what admission gates on)", () => {
+  it("a resting BUY widens the bound on its own side", () => {
+    expect(marketExposureBounds(mk({ yesLong: 80n }))).toEqual({ up: 80n, dn: 0n });
+    expect(marketExposureBounds(mk({ noLong: 60n }))).toEqual({ up: 0n, dn: -60n });
+  });
+
+  it("a resting SELL widens the SAME bound as a buy of that side, not the opposite one", () => {
+    // Its tokens are already escrowed — verified live, where a pool's outcome
+    // balance equalled its resting ask depth exactly — so what it exposes is
+    // the escrow returning on cancel, which lands on the upper bound exactly
+    // like a BUY_YES fill would.
+    expect(marketExposureBounds(mk({ yesBalance: 100n, yesShort: 40n }))).toEqual({ up: 140n, dn: 100n });
+  });
+
+  it("opposing pending orders on one market are NEVER netted", () => {
+    // The exact shape that made AIRSPACE 1.0.0 unsafe: a pending BUY_YES and a
+    // pending BUY_NO can each fill without the other, so the worst case is the
+    // LARGER side, not the difference between them.
+    const p = mk({ yesLong: 120n, noLong: 90n });
+    expect(marketExposureBounds(p)).toEqual({ up: 120n, dn: -90n });
+    expect(marketWorstCaseExposure(p)).toBe(120n);
+  });
+
+  it("a held complete set plus a one-sided pending order is exposed by exactly that order", () => {
+    const p = mk({ yesBalance: 250n, noBalance: 250n, yesLong: 60n });
+    expect(marketWorstCaseExposure(p)).toBe(60n);
+  });
+
+  it("the historical failure: 1.0.0 reported 80, the corrected model reports the true 1,170", () => {
+    // Shannon block 473455000: balYES 70, balNO 620, yesLong 1090, noLong 620.
+    const p = mk({ yesBalance: 70n, noBalance: 620n, yesLong: 1090n, noLong: 620n });
+    expect(marketWorstCaseExposure(p)).toBe(1170n);
+    // The disproven formula, reproduced only to document the gap it left:
+    const v1 = abs(p.yesBalance + p.yesLong - p.yesShort - (p.noBalance + p.noLong - p.noShort));
+    expect(v1).toBe(80n);
+  });
+
+  it("a settled market carries no bound", () => {
+    expect(marketWorstCaseExposure(mk({ yesLong: 500n, settled: true }))).toBe(0n);
+  });
+});
+
 describe("domain risk usage", () => {
-  it("sums ABSOLUTE exposure and never nets across markets", () => {
+  it("sums per-market WORST CASE and never nets across markets", () => {
     // Long one market and short another is not a hedge: they resolve at
     // different times, and the domain does not even prove a shared underlying.
     const usage = domainRiskUsage([mk({ yesBalance: 100n }), mk({ noBalance: 100n })]);
@@ -88,12 +126,18 @@ describe("reservation arithmetic", () => {
   });
 });
 
-describe("committed capital", () => {
+describe("committed capital (collateral not currently free — not a claim about open positions)", () => {
   it("is capital base minus free collateral", () => {
     expect(committedCapital(1000n, 700n)).toBe(300n);
   });
   it("floors at zero rather than going negative", () => {
     expect(committedCapital(1000n, 1200n)).toBe(0n);
+  });
+  it("floors at zero when profitable sell proceeds exceed the funded base, even with orders still open", () => {
+    // This is the documented imprecision: it is a budget reading, not proof
+    // nothing is committed. Solvency is separately gated on freeCollateral()
+    // read from the token itself, never on this derived figure.
+    expect(committedCapital(1000n, 1050n)).toBe(0n);
   });
 });
 

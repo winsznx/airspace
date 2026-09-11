@@ -31,6 +31,11 @@ import { reserveFor } from "@airspace/risk";
 import { airspacePortfolioAbi, airspacePortfolioFactoryAbi } from "./abi.js";
 
 export { airspacePortfolioAbi, airspacePortfolioFactoryAbi } from "./abi.js";
+export {
+  assertCurrentImplementation,
+  SupersededDeploymentError,
+  SUPERSEDED_IMPLEMENTATIONS,
+} from "./deployment-guard.js";
 
 /** Function-name unions derived from the generated ABI, so a typo cannot compile. */
 type PortfolioAbi = typeof airspacePortfolioAbi;

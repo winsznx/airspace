@@ -646,6 +646,25 @@ export const airspacePortfolioAbi = [
   },
   {
     "type": "function",
+    "name": "marketWorstCaseExposure",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "module",
     "inputs": [],
     "outputs": [

@@ -1,5 +1,8 @@
 import { createPublicClient, http, fallback, type PublicClient } from "viem";
+import type { Address } from "@airspace/types";
+import { assertCurrentImplementation, SupersededDeploymentError } from "@airspace/sdk";
 import type { Env } from "./env.js";
+import { chainId, factoryAddress } from "./env.js";
 
 /**
  * Somnia chain access with transport failover.
@@ -52,4 +55,32 @@ export function isTransportError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   if (/execution reverted|revert|Refused|custom error/i.test(msg)) return false;
   return /fetch|network|timeout|ECONN|socket|5\d\d|HTTP request failed/i.test(msg);
+}
+
+/**
+ * Fail LOUDLY, once per isolate, if this Worker is configured against a
+ * superseded and unsafe AIRSPACE implementation.
+ *
+ * A factory's implementation is immutable — no proxy, no upgrade authority —
+ * so a single verified check is valid for the isolate's whole lifetime. The
+ * verdict itself is cached forever within the isolate: a confirmed superseded
+ * deployment should keep failing every request, cheaply, rather than being
+ * re-verified. A TRANSPORT failure during the check is not a verdict and is
+ * not cached, so the next request tries again.
+ */
+const verifiedFactories = new Map<string, Promise<Address>>();
+
+export function verifiedFactory(env: Env): Promise<Address> {
+  const factory = factoryAddress(env);
+  const cid = chainId(env);
+  const key = `${cid}:${factory}`;
+  let pending = verifiedFactories.get(key);
+  if (!pending) {
+    pending = assertCurrentImplementation(publicClient(env), factory, cid).then(() => factory);
+    pending.catch((e) => {
+      if (!(e instanceof SupersededDeploymentError)) verifiedFactories.delete(key);
+    });
+    verifiedFactories.set(key, pending);
+  }
+  return pending;
 }

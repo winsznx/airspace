@@ -9,7 +9,7 @@ import {
   airspacePortfolioAbi,
   airspacePortfolioFactoryAbi,
 } from "@airspace/sdk";
-import { orderKey, readMarket } from "@airspace/protocol";
+import { orderKey, readMarket, outcomeId, erc6909Abi, DREAMDEX } from "@airspace/protocol";
 import { createServiceDb, type SupabaseClient } from "@airspace/db";
 import { chainId, factoryAddress, ingestWindow, type Env } from "./env.js";
 import { publicClient } from "./rpc.js";
@@ -828,7 +828,11 @@ async function project(
  * Deliberately a read, not an accumulation. `getOrder` reverts identically for a
  * filled and a cancelled order, so a running counter cannot be trusted; the
  * portfolio measures exposure from ERC-6909 balances and this mirrors that
- * measurement rather than re-deriving it from event arithmetic.
+ * measurement rather than re-deriving it from event arithmetic — `yes_balance`
+ * and `no_balance` come from `balanceOf` on the outcome token itself, never
+ * from `marketState`'s reservation counters, which is a different quantity
+ * entirely (open BUY/SELL quantity, not realized holdings). An earlier version
+ * of this function conflated the two; see evidence/production/REMEDIATION.md.
  */
 async function syncPosition(
   db: SupabaseClient,
@@ -838,36 +842,35 @@ async function syncPosition(
   marketId: MarketId,
   block: number,
 ): Promise<void> {
-  const [state, directional] = await Promise.all([
+  const state = (await client.readContract({
+    address: portfolio,
+    abi: airspacePortfolioAbi,
+    functionName: "marketState",
+    args: [marketId],
+  })) as readonly [Address, bigint, `0x${string}`, bigint, bigint, bigint, bigint, boolean, boolean];
+
+  const [pool, marketNonce, domain, , , , , tracked, settled] = state;
+  if (!tracked) return;
+
+  const yesId = outcomeId(pool, marketNonce, 0);
+  const [yesBalance, noBalance] = await Promise.all([
     client.readContract({
-      address: portfolio,
-      abi: airspacePortfolioAbi,
-      functionName: "marketState",
-      args: [marketId],
-    }) as Promise<
-      readonly [
-        Address,
-        bigint,
-        `0x${string}`,
-        bigint,
-        bigint,
-        bigint,
-        bigint,
-        boolean,
-        boolean,
-      ]
-    >,
+      address: DREAMDEX.outcomeToken,
+      abi: erc6909Abi,
+      functionName: "balanceOf",
+      args: [portfolio, yesId],
+    }) as Promise<bigint>,
     client.readContract({
-      address: portfolio,
-      abi: airspacePortfolioAbi,
-      functionName: "marketDirectionalExposure",
-      args: [marketId],
+      address: DREAMDEX.outcomeToken,
+      abi: erc6909Abi,
+      functionName: "balanceOf",
+      args: [portfolio, yesId + 1n],
     }) as Promise<bigint>,
   ]);
-
-  const [, , domain, yesLong, yesShort, noLong, noShort, tracked, settled] =
-    state;
-  if (!tracked) return;
+  // Matches the contract's own `marketDirectionalExposure`: realized-only,
+  // zero once settled. Computed locally rather than fetched a third time so
+  // both balances and the derived figure describe the exact same read.
+  const directional = settled ? 0n : yesBalance - noBalance;
 
   await must(
     "positions upsert",
@@ -876,8 +879,8 @@ async function syncPosition(
         portfolio_id: portfolioId,
         market_id: marketId,
         domain_hash: domain,
-        yes_balance: (yesLong - yesShort).toString(),
-        no_balance: (noLong - noShort).toString(),
+        yes_balance: yesBalance.toString(),
+        no_balance: noBalance.toString(),
         directional_exposure: directional.toString(),
         settled,
         source_block: block,

@@ -17,10 +17,10 @@ import { REFUSAL_COPY, REFUSAL_GATE, GATE_ROWS, hasGate, Refusal as R } from "@a
 
 export interface MarketPosition {
   marketId: MarketId;
-  /** Realized ERC-6909 balance. */
+  /** Realized ERC-6909 balance — what the portfolio holds RIGHT NOW. */
   yesBalance: bigint;
   noBalance: bigint;
-  /** Unfilled reservations, by side. */
+  /** Unfilled reservations, by side. Each resolves INDEPENDENTLY. */
   yesLong: bigint;
   yesShort: bigint;
   noLong: bigint;
@@ -28,41 +28,90 @@ export interface MarketPosition {
   settled: boolean;
 }
 
-/**
- * Directional exposure of ONE binary market, in contract units.
- *
- * Within a market, YES and NO are complementary fixed-payout claims, so a
- * matched YES+NO pair is a complete set worth exactly one collateral unit at
- * settlement regardless of outcome. It therefore carries zero directional
- * outcome exposure and correctly nets to zero here — the TAPE result,
- * reproduced. A settled market carries none: its position is a fixed claim.
- */
-export function marketDirectionalExposure(p: MarketPosition): bigint {
-  if (p.settled) return 0n;
-  const netYes = p.yesBalance + p.yesLong - p.yesShort;
-  const netNo = p.noBalance + p.noLong - p.noShort;
-  return netYes - netNo;
-}
-
 export const abs = (x: bigint): bigint => (x < 0n ? -x : x);
 
 /**
- * Domain risk usage: the sum of ABSOLUTE directional exposure over a domain's
- * markets.
+ * Realized directional position of ONE market: what the portfolio holds RIGHT
+ * NOW, with no reservations. Mirrors the contract's `marketDirectionalExposure`
+ * exactly — a matched YES+NO pair nets to a complete set, worth one collateral
+ * unit at settlement regardless of outcome, so it carries no direction. A
+ * settled market returns 0: its position is a fixed claim, not a bet.
  *
- * Gross, never netted across markets. Two markets in one cadence domain are
- * different questions resolving at different times against different reference
- * prices — and the domain does not even establish that they share an underlying.
- * Netting would understate risk; summing absolutes can only overstate, which is
- * the safe direction (PRD 10.5).
+ * This is NOT the number admission gates on. See `marketWorstCaseExposure`.
+ */
+export function marketDirectionalExposure(p: MarketPosition): bigint {
+  if (p.settled) return 0n;
+  return p.yesBalance - p.noBalance;
+}
+
+/**
+ * The reachable INTERVAL of a market's directional position, given every
+ * resting order can resolve independently.
+ *
+ * A SELL escrows its outcome tokens at PLACEMENT — verified live on four
+ * Shannon pools, each of whose outcome-token balance equalled its resting ask
+ * depth exactly — so a resting sell has already left the realized balance, and
+ * what it exposes is the escrow returning if it is cancelled. That is why
+ * `yesShort` widens the UPPER bound rather than narrowing it.
+ */
+export function marketExposureBounds(p: MarketPosition): { up: bigint; dn: bigint } {
+  if (p.settled) return { up: 0n, dn: 0n };
+  const b = p.yesBalance - p.noBalance;
+  return { up: b + p.yesLong + p.yesShort, dn: b - p.noLong - p.noShort };
+}
+
+/**
+ * Worst-case directional exposure of ONE market — the widest point of the
+ * reachable interval. Mirrors the contract's `marketWorstCaseExposure` exactly,
+ * and is what admission actually gates on.
+ *
+ * Opposing pending orders are NEVER netted here: a pending BUY_YES and a
+ * pending BUY_NO can each fill without the other, and assuming they resolve
+ * together is the mistake that made AIRSPACE 1.0.0 unsafe (understated a true
+ * worst case of 1,170 as 80). See ARCHITECTURE.md and
+ * evidence/production/REMEDIATION.md.
+ */
+export function marketWorstCaseExposure(p: MarketPosition): bigint {
+  const { up, dn } = marketExposureBounds(p);
+  const a = abs(up);
+  const c = abs(dn);
+  return a > c ? a : c;
+}
+
+/**
+ * Domain risk usage: the sum of per-market WORST-CASE exposure, never netted
+ * across markets. Mirrors the contract's `domainRiskUsage` exactly.
+ *
+ * Two markets in one cadence domain are different questions resolving at
+ * different times against different reference prices — the domain does not
+ * even establish that they share an underlying. Netting would understate risk;
+ * summing worst cases can only overstate, which is the safe direction.
  */
 export function domainRiskUsage(positions: readonly MarketPosition[]): bigint {
   let usage = 0n;
-  for (const p of positions) usage += abs(marketDirectionalExposure(p));
+  for (const p of positions) usage += marketWorstCaseExposure(p);
   return usage;
 }
 
-/** Collateral no longer free: escrowed behind resting orders, or spent on positions. */
+/**
+ * Collateral not currently free, measured as `capitalBase − freeCollateral`.
+ *
+ * This is NOT "capital tied up in open positions." It is derived, not
+ * accumulated, which is exact and self-healing for escrow leaving, a fill
+ * spending collateral, a cancel returning escrow and a redemption returning
+ * collateral — but it has one honest gap: collateral arriving from a
+ * PROFITABLE sale is indistinguishable from collateral that was never spent.
+ * A sell whose proceeds exceed its cost raises `freeCollateral` above
+ * `capitalBase`, and this floors at zero — reading as "nothing committed"
+ * even while orders are still open.
+ *
+ * That is a real imprecision in the BUDGET this number represents, and the UI
+ * must not present it as "capital in positions." It is not a solvency gap:
+ * every buy is gated on `freeCollateral()` read from the token itself, so the
+ * portfolio can never authorise collateral it does not hold. The owner
+ * corrects the base with `setCapitalBase` after realising profit. See
+ * evidence/production/REMEDIATION.md and SECURITY.md.
+ */
 export function committedCapital(capitalBase: bigint, freeCollateral: bigint): bigint {
   return capitalBase > freeCollateral ? capitalBase - freeCollateral : 0n;
 }
