@@ -347,11 +347,54 @@ async function findDomainPair() {
   const gRel = await usage(DOM);
   log("08-released", { ...relTx, domainRiskUsage: gRel, note: "release is permissionless but non-discretionary: the pool supplies the number" });
 
+  // 8b. reconcile every reservation the venue no longer has open.
+  //
+  // This step is not tidying. On a live book an admitted order can be filled by
+  // an outside taker in a transaction AIRSPACE never sees, and DreamDEX's
+  // `getOrder` reverts identically whether an order filled or was cancelled. So
+  // until someone releases it, the portfolio charges BOTH the stale reservation
+  // AND the position that arrived — the same contracts counted twice.
+  //
+  // That overstatement is deliberate: the alternative is to guess the order is
+  // gone, and a wrong guess UNDERSTATES, which is the failure class that
+  // superseded v1. Reconciliation is how the overstatement converts back into
+  // headroom, and it is permissionless precisely so no privileged party has to
+  // be online for that to happen.
+  const orderIdB = await orderIdOf(txB.hash);
+  const keyB = keccak256(
+    encodeAbiParameters([{ type: "address" }, { type: "uint64" }, { type: "uint128" }], [m2.pool, m2.nonce, orderIdB]),
+  );
+  const gBefore = await usage(DOM);
+  const reconciled = [];
+  try {
+    const { request } = await pub.simulateContract({
+      account: C,
+      address: PF,
+      abi: PF_ABI,
+      functionName: "releaseOrder",
+      args: [keyB],
+    });
+    const t = await send(wC, request, "reconcile B's reservation (filled by an outside taker)");
+    reconciled.push({ agent: "B", hash: t.hash, status: t.status });
+  } catch (e) {
+    // `OrderStillLive` means there was nothing stale to reconcile: B's order
+    // genuinely still rests, and the charge was never an overstatement.
+    reconciled.push({ agent: "B", skipped: String(e.shortMessage ?? e.message).slice(0, 100) });
+  }
+  const gRec = await usage(DOM);
+  log("08b-reconciled", {
+    domainUsageBefore: gBefore,
+    domainUsageAfter: gRec,
+    headroomReclaimed: gBefore > gRec ? gBefore - gRec : 0n,
+    reconciled,
+    note: "a filled reservation is charged twice until released; releasing it is permissionless",
+  });
+
   // 9. the identical C intent is now admitted
   const iC2 = rest(m1, 150n * K, 7);
   const txC = await exec(wC, C, iC2, "AGENT_C 150 (identical shape, now admissible)");
   const gC = await usage(DOM);
-  log("09-agentC-ADMITTED", { ...txC, domainRiskUsage: gC, arithmetic: `${gRel} + ${150n * K} = ${gC} <= ${dp.maxDomainRiskUsage}` });
+  log("09-agentC-ADMITTED", { ...txC, domainRiskUsage: gC, arithmetic: `${gRec} + ${150n * K} = ${gC} <= ${dp.maxDomainRiskUsage}` });
 
   // 10. owner recovery with every agent revoked
   for (const [addr, n] of [[A.address, "A"], [B.address, "B"], [C.address, "C"]]) await own("revokeAgent", [addr], `revoke ${n}`);

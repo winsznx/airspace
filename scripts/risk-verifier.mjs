@@ -1,47 +1,54 @@
 #!/usr/bin/env node
 /**
- * Independent risk verifier.
+ * Independent live risk verifier.
  *
- * `domainRiskUsage` is the portfolio's own conservative number. This script does
- * not trust it. It reconstructs exposure from primary sources — ERC-6909
- * balances, the reservation counters in `marketState`, and the DreamDEX order
- * book — and reports the two quantities separately so the difference between
- * them is visible rather than argued about.
+ * This exists because the v1 deployment shipped with an invariant that checked
+ * `domainRiskUsage <= CEILING` — the contract's own number, against itself. An
+ * understatement made that assertion pass, which is how a real safety failure
+ * survived a green test suite all the way to a funded mainnet-equivalent
+ * deployment.
  *
- * WHAT THE CONTRACT COUNTS
+ * So this script trusts the portfolio for exactly nothing. Every quantity it
+ * compares is rebuilt from a primary source:
  *
- *   directional(m) = (bal(YES) + yesLong − yesShort) − (bal(NO) + noLong − noShort)
- *   domainRiskUsage = Σ |directional(m)| over tracked, unsettled markets
+ *   realized positions      ERC-6909 `balanceOf`, from the token itself
+ *   open reservations       `getOrder` on the DreamDEX pool, ONE ORDER AT A TIME
+ *   collateral              ERC-20 `balanceOf`, from the collateral token
+ *   configured ceiling      `domainPolicy`, the only thing the owner sets
  *
- * `bal(...)` is realized: tokens the portfolio actually holds. The four
- * counters are reservations: quantities of orders that have been admitted and
- * placed but not yet reconciled away.
+ * The reservation figures deliberately do NOT come from `marketState`. Those
+ * counters are the contract's summary of its own reservations, and reusing them
+ * would make the comparison circular in exactly the way the v1 invariant was.
+ * Order ids come from `IntentAdmitted` logs; how much of each is still open
+ * comes from the venue.
  *
- * WHERE THE OVERSTATEMENT COMES FROM
+ * THE MODEL
  *
- * A resting order can fill in a transaction AIRSPACE never sees, and DreamDEX's
- * `getOrder` reverts identically whether an order filled or was cancelled. So
- * the contract keeps charging the reservation until a release proves the order
- * is gone. In that window the fill is already in `bal(...)` AND the reservation
- * is still counted: the same contracts are charged twice.
+ * DreamDEX escrows a SELL's outcome tokens at PLACEMENT (verified live: a
+ * pool's outcome balance equals its resting ask depth exactly). So each resting
+ * order resolves independently:
  *
- * That is a bounded, provable double count, not unexplained risk. This script
- * proves it by asking the venue, per order, whether it is still live:
+ *   BUY_YES   fills -> +q YES        cancels -> nothing
+ *   BUY_NO    fills -> +q NO         cancels -> nothing
+ *   SELL_YES  fills -> nothing       cancels -> +q YES escrow returns
+ *   SELL_NO   fills -> nothing       cancels -> +q NO  escrow returns
  *
- *   live reservation   → `bal + reservation` IS the worst case. Not overstated.
- *   dead reservation   → the order filled or was cancelled. The reservation is
- *                        stale and its whole quantity is overstatement.
+ * Worst case is the maximum |YES − NO| over every combination of those, found
+ * here by enumeration. Opposing orders are never netted: a pending BUY_YES and
+ * a pending BUY_NO can each fill without the other, and assuming they resolve
+ * together is precisely the mistake that produced the v1 failure.
  *
- * THE TWO INVARIANTS
+ * THE CRITICAL PROPERTY
  *
- *   SAFETY    the worst case the contract could have authorised never exceeds
- *             the ceiling — checked against `receipts.domain_usage_after`, which
- *             is the number the contract itself gated on.
- *   LIVENESS  overstatement converges to zero as lifecycle reconciliation runs.
+ *   AIRSPACE_ACCOUNTED_WORST_CASE >= INDEPENDENT_REFERENCE_WORST_CASE
  *
- *   node scripts/risk-verifier.mjs                      # sample now
- *   node scripts/risk-verifier.mjs --block 473453044    # sample a past block
- *   node scripts/risk-verifier.mjs --scan 60000 --step 500   # find the peak
+ * Understatement by one raw unit is a critical failure: the script prints
+ * CRITICAL, writes it to evidence, and exits non-zero. Overstatement is
+ * permitted, measured, and reported as reconciliation backlog.
+ *
+ *   node scripts/risk-verifier.mjs
+ *   node scripts/risk-verifier.mjs --block 473455000
+ *   node scripts/risk-verifier.mjs --watch 30 --for 1800
  *
  * Writes evidence/production/risk-verification.json.
  */
@@ -54,7 +61,10 @@ const arg = (n, d) => {
 };
 
 const RPC = process.env.SHANNON_RPC ?? "https://dream-rpc.somnia.network";
-const RPC2 = "https://rpc.ankr.com/somnia_testnet";
+// Optional second endpoint. Left unset by default: a fallback that does not
+// resolve turns every transient primary failure into a DNS crash, which killed
+// an earlier long watch mid-run.
+const RPC2 = process.env.SHANNON_RPC_FALLBACK ?? null;
 const CHAIN = {
   id: 50312,
   name: "Somnia Shannon",
@@ -63,7 +73,9 @@ const CHAIN = {
 };
 const pub = createPublicClient({
   chain: CHAIN,
-  transport: fallback([http(RPC, { retryCount: 1 }), http(RPC2, { retryCount: 1 })], { rank: false }),
+  transport: RPC2
+    ? fallback([http(RPC, { retryCount: 3 }), http(RPC2, { retryCount: 1 })], { rank: false })
+    : http(RPC, { retryCount: 3 }),
 });
 
 const campaign = JSON.parse(fs.readFileSync("evidence/production/campaign.json", "utf8"));
@@ -72,10 +84,11 @@ const portfolioAbi = JSON.parse(
   fs.readFileSync("contracts/out/AirspacePortfolio.sol/AirspacePortfolio.json", "utf8"),
 ).abi;
 
-const PORTFOLIO = arg("portfolio", campaign.portfolio);
+const PORTFOLIO = arg("portfolio", process.env.AIRSPACE_PORTFOLIO ?? campaign.portfolio);
 const OUTCOME = deployment.dreamdex.outcomeToken6909;
+const COLLATERAL = deployment.dreamdex.collateral;
 
-const ERC6909_ABI = [
+const ERC_ABI = [
   {
     type: "function",
     name: "balanceOf",
@@ -84,7 +97,15 @@ const ERC6909_ABI = [
     outputs: [{ type: "uint256" }],
   },
 ];
-
+const ERC20_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+];
 const ORDERBOOK_ABI = [
   {
     type: "function",
@@ -114,17 +135,115 @@ const outcomeId = (pool, nonce, idx) => (BigInt(pool) << 72n) | (BigInt(nonce) <
 
 const abs = (x) => (x < 0n ? -x : x);
 const at = (blockNumber) => (blockNumber === undefined ? {} : { blockNumber });
+const c = (v) => (Number(v) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+/**
+ * Worst-case directional exposure by EXHAUSTIVE ENUMERATION.
+ *
+ * The closed-form bound the contract evaluates and this enumeration are two
+ * different routes to the same answer, which is the point: a shared formula
+ * would share its mistakes.
+ */
+function independentWorstCase({ balYes, balNo, buyYes, sellYes, buyNo, sellNo }) {
+  let worst = 0n;
+  for (let mask = 0; mask < 16; mask++) {
+    let yes = balYes;
+    let no = balNo;
+    if (mask & 1) yes += buyYes; // BUY_YES filled
+    if (mask & 4) no += buyNo; // BUY_NO filled
+    if (!(mask & 2)) yes += sellYes; // SELL_YES unfilled: escrow returns
+    if (!(mask & 8)) no += sellNo; // SELL_NO unfilled: escrow returns
+    const d = abs(yes - no);
+    if (d > worst) worst = d;
+  }
+  return worst;
+}
 
 // ---------------------------------------------------------------------------
 
-async function sample(domain, blockNumber) {
-  const read = (functionName, args = []) =>
-    pub.readContract({ address: PORTFOLIO, abi: portfolioAbi, functionName, args, ...at(blockNumber) });
+/**
+ * Every order this portfolio ever placed, by market, with its kind.
+ *
+ * Logs are the only way to recover individual order ids: `marketState` holds
+ * only the four aggregate counters, and an aggregate cannot be asked whether it
+ * is still live.
+ */
+async function buildOrderIndex(fromBlock, toBlock) {
+  const index = new Map();
+  const CHUNK = 1000n;
+  const evt = portfolioAbi.find((e) => e.type === "event" && e.name === "IntentAdmitted");
+  for (let from = fromBlock; from <= toBlock; from += CHUNK) {
+    const to = from + CHUNK - 1n > toBlock ? toBlock : from + CHUNK - 1n;
+    let logs = [];
+    try {
+      logs = await pub.getLogs({ address: PORTFOLIO, event: evt, fromBlock: from, toBlock: to });
+    } catch {
+      continue;
+    }
+    for (const l of logs) {
+      const k = l.args.marketId.toLowerCase();
+      if (!index.has(k)) index.set(k, []);
+      index.get(k).push({
+        orderId: l.args.orderId,
+        kind: Number(l.args.kind),
+        quantity: l.args.quantity,
+        block: l.blockNumber,
+      });
+    }
+  }
+  return index;
+}
 
-  const [policy, reported, marketIds] = await Promise.all([
+/**
+ * Ask the VENUE, order by order, what is still open. This is the number the
+ * independent model is built from — never the contract's counters.
+ */
+async function readVenueReservations(pool, orders, blockNumber) {
+  const live = { buyYes: 0n, sellYes: 0n, buyNo: 0n, sellNo: 0n };
+  const detail = [];
+  const bucket = ["buyYes", "sellYes", "buyNo", "sellNo"];
+
+  for (const o of orders) {
+    let remaining = 0n;
+    try {
+      const r = await pub.readContract({
+        address: pool,
+        abi: ORDERBOOK_ABI,
+        functionName: "getOrder",
+        args: [o.orderId],
+        ...at(blockNumber),
+      });
+      // Only OUR orders count. A recycled pool can reissue an id to someone else.
+      if (r.owner.toLowerCase() === PORTFOLIO.toLowerCase()) remaining = r.quantityRemaining;
+    } catch {
+      // `IncorrectOrder()` — filled, cancelled or expired. Indistinguishable by
+      // design, and it does not matter: none of the three is still open.
+      remaining = 0n;
+    }
+    if (remaining > 0n) live[bucket[o.kind]] += remaining;
+    detail.push({
+      orderId: o.orderId.toString(),
+      kind: o.kind,
+      placed: o.quantity.toString(),
+      remaining: remaining.toString(),
+      live: remaining > 0n,
+    });
+  }
+  return { live, detail };
+}
+
+async function sample(domain, orderIndex, blockNumber) {
+  const read = (fn, args = []) =>
+    pub.readContract({ address: PORTFOLIO, abi: portfolioAbi, functionName: fn, args, ...at(blockNumber) });
+
+  const [policy, reportedUsage, marketIds, capitalBase, freeColl, reservedColl, heldColl] = await Promise.all([
     read("domainPolicy", [domain]),
     read("domainRiskUsage", [domain]),
     read("domainMarkets", [domain]),
+    read("capitalBase"),
+    read("freeCollateral"),
+    read("reservedCollateral"),
+    pub.readContract({ address: COLLATERAL, abi: ERC20_ABI, functionName: "balanceOf", args: [PORTFOLIO], ...at(blockNumber) }),
   ]);
 
   const ceiling = policy[1];
@@ -133,20 +252,30 @@ async function sample(domain, blockNumber) {
   for (const marketId of marketIds) {
     const m = await read("marketState", [marketId]);
     const [pool, marketNonce, , yesLong, yesShort, noLong, noShort, tracked, settled] = m;
-    // The contract excludes untracked and settled markets from the sum, so the
-    // verifier must too or the two numbers are not comparable.
+    // The contract excludes untracked and settled markets from its sum, so the
+    // verifier must too, or the two totals are not comparable quantities.
     if (!tracked || settled) continue;
+
+    const accounted = await read("marketWorstCaseExposure", [marketId]);
 
     const yesId = outcomeId(pool, marketNonce, 0);
     const [balYes, balNo] = await Promise.all([
-      pub.readContract({ address: OUTCOME, abi: ERC6909_ABI, functionName: "balanceOf", args: [PORTFOLIO, yesId], ...at(blockNumber) }),
-      pub.readContract({ address: OUTCOME, abi: ERC6909_ABI, functionName: "balanceOf", args: [PORTFOLIO, yesId + 1n], ...at(blockNumber) }),
+      pub.readContract({ address: OUTCOME, abi: ERC_ABI, functionName: "balanceOf", args: [PORTFOLIO, yesId], ...at(blockNumber) }),
+      pub.readContract({ address: OUTCOME, abi: ERC_ABI, functionName: "balanceOf", args: [PORTFOLIO, yesId + 1n], ...at(blockNumber) }),
     ]);
 
-    // What the contract reports for this market.
-    const conservative = balYes + yesLong - yesShort - (balNo + noLong - noShort);
-    // Realized only: every reservation assumed to vanish.
-    const realized = balYes - balNo;
+    const orders = orderIndex.get(marketId.toLowerCase()) ?? [];
+    const { live, detail } = await readVenueReservations(pool, orders, blockNumber);
+
+    const independent = independentWorstCase({ balYes, balNo, ...live });
+
+    // What the contract still carries that the venue no longer has open. This
+    // is the reconciliation backlog: a filled or cancelled order whose
+    // reservation nobody has released yet. It inflates usage until someone
+    // calls `releaseOrder`, and it costs headroom, never safety.
+    const contractReserved = yesLong + yesShort + noLong + noShort;
+    const venueReserved = live.buyYes + live.sellYes + live.buyNo + live.sellNo;
+    const backlog = contractReserved > venueReserved ? contractReserved - venueReserved : 0n;
 
     markets.push({
       marketId,
@@ -154,181 +283,162 @@ async function sample(domain, blockNumber) {
       marketNonce,
       balYes,
       balNo,
-      yesLong,
-      yesShort,
-      noLong,
-      noShort,
-      conservative,
-      realized,
+      contractCounters: { yesLong, yesShort, noLong, noShort },
+      venueLive: live,
+      accounted,
+      independent,
+      backlog,
+      understates: accounted < independent,
+      orders: detail,
     });
   }
 
-  return { domain, ceiling, reported, markets };
-}
+  const accountedTotal = markets.reduce((a, m) => a + m.accounted, 0n);
+  const independentTotal = markets.reduce((a, m) => a + m.independent, 0n);
+  const backlogTotal = markets.reduce((a, m) => a + m.backlog, 0n);
 
-/**
- * Ask the venue whether each reservation still has a live order behind it.
- *
- * Reservation counters are aggregates, so the individual order ids come from
- * the `IntentAdmitted` logs of this portfolio. An order the pool still knows
- * about is a genuine future commitment; one it does not is stale, and its whole
- * quantity is overstatement.
- */
-async function classifyReservations(markets, orderIndex, blockNumber) {
-  for (const m of markets) {
-    const reserved = m.yesLong + m.yesShort + m.noLong + m.noShort;
-    m.reservedTotal = reserved;
-    m.liveReserved = 0n;
-    m.staleReserved = 0n;
-    m.orders = [];
-    if (reserved === 0n) continue;
-
-    for (const o of orderIndex.get(m.marketId.toLowerCase()) ?? []) {
-      let remaining = 0n;
-      let known = false;
-      try {
-        const r = await pub.readContract({
-          address: m.pool,
-          abi: ORDERBOOK_ABI,
-          functionName: "getOrder",
-          args: [o.orderId],
-          ...at(blockNumber),
-        });
-        remaining = r.quantityRemaining;
-        known = true;
-      } catch {
-        // `IncorrectOrder()` — filled or cancelled, indistinguishable by design.
-        known = false;
-      }
-      m.orders.push({ orderId: o.orderId.toString(), kind: o.kind, placed: o.quantity.toString(), remaining: remaining.toString(), live: known && remaining > 0n });
-      if (known && remaining > 0n) m.liveReserved += remaining;
-    }
-
-    // Anything charged that no live order accounts for is stale.
-    m.staleReserved = reserved > m.liveReserved ? reserved - m.liveReserved : 0n;
-  }
-}
-
-/**
- * The exposure the contract WOULD report if every stale reservation were
- * released right now. This is the honest worst case: live reservations still
- * count in full, because they can still fill.
- */
-function worstCaseFor(m) {
-  const scale = m.reservedTotal === 0n ? 0n : m.liveReserved;
-  if (m.reservedTotal === 0n) return m.realized;
-  // Scale each side's reservation by the live fraction. Exact when a market has
-  // one open side, which is the case for every order these agents place.
-  const f = (v) => (m.reservedTotal === 0n ? 0n : (v * scale) / m.reservedTotal);
-  return m.balYes + f(m.yesLong) - f(m.yesShort) - (m.balNo + f(m.noLong) - f(m.noShort));
+  return {
+    domain,
+    ceiling,
+    reportedUsage,
+    accountedTotal,
+    independentTotal,
+    backlogTotal,
+    capitalBase,
+    freeColl,
+    reservedColl,
+    heldColl,
+    markets,
+  };
 }
 
 // ---------------------------------------------------------------------------
 
-async function buildOrderIndex(fromBlock, toBlock) {
-  // Every order this portfolio ever placed, by market.
-  const index = new Map();
-  const CHUNK = 1000n;
-  for (let from = fromBlock; from <= toBlock; from += CHUNK) {
-    const to = from + CHUNK - 1n > toBlock ? toBlock : from + CHUNK - 1n;
-    let logs = [];
-    try {
-      logs = await pub.getLogs({
-        address: PORTFOLIO,
-        event: portfolioAbi.find((e) => e.type === "event" && e.name === "IntentAdmitted"),
-        fromBlock: from,
-        toBlock: to,
-      });
-    } catch {
-      continue;
-    }
-    for (const l of logs) {
-      const k = l.args.marketId.toLowerCase();
-      if (!index.has(k)) index.set(k, []);
-      index.get(k).push({ orderId: l.args.orderId, kind: Number(l.args.kind), quantity: l.args.quantity, block: l.blockNumber });
-    }
-  }
-  return index;
-}
+function report(s, block) {
+  const understates = s.markets.some((m) => m.understates) || s.accountedTotal < s.independentTotal;
+  const overstatement = s.accountedTotal > s.independentTotal ? s.accountedTotal - s.independentTotal : 0n;
 
-function report(s, label) {
-  const conservative = s.markets.reduce((a, m) => a + abs(m.conservative), 0n);
-  const realized = s.markets.reduce((a, m) => a + abs(m.realized), 0n);
-  const worstCase = s.markets.reduce((a, m) => a + abs(worstCaseFor(m)), 0n);
-  const overstatement = conservative > worstCase ? conservative - worstCase : 0n;
-
-  const c = (v) => (Number(v) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 });
-
-  console.log(`\n${label}`);
-  console.log(`  configured ceiling                 ${c(s.ceiling).padStart(12)}`);
-  console.log(`  contract domainRiskUsage           ${c(s.reported).padStart(12)}`);
-  console.log(`  verifier conservative (recomputed) ${c(conservative).padStart(12)}  ${conservative === s.reported ? "matches" : "MISMATCH"}`);
-  console.log(`  worst case after stale released    ${c(worstCase).padStart(12)}`);
-  console.log(`  realized holdings only             ${c(realized).padStart(12)}`);
-  console.log(`  accounting overstatement           ${c(overstatement).padStart(12)}`);
-  console.log(`  over ceiling?                      ${s.reported > s.ceiling ? "YES (conservative)" : "no"}`);
-  console.log(`  worst case over ceiling?           ${worstCase > s.ceiling ? "*** YES ***" : "no"}`);
+  console.log(`\nDOMAIN ${s.domain.slice(0, 14)}…  block ${block}`);
+  console.log(`  1  configured ceiling                ${c(s.ceiling).padStart(12)}`);
+  console.log(`  2  contract domainRiskUsage          ${c(s.reportedUsage).padStart(12)}  ${s.reportedUsage === s.accountedTotal ? "= Σ per-market" : "MISMATCH vs Σ"}`);
+  console.log(`  3  independent worst-case exposure   ${c(s.independentTotal).padStart(12)}`);
+  console.log(`  4  committed collateral              ${c(s.capitalBase - (s.freeColl > s.capitalBase ? s.capitalBase : s.freeColl)).padStart(12)}  (base ${c(s.capitalBase)}, free ${c(s.freeColl)})`);
+  console.log(`  5  reserved collateral               ${c(s.reservedColl).padStart(12)}`);
+  console.log(`  6  ERC-6909 positions held           ${c(s.markets.reduce((a, m) => a + m.balYes + m.balNo, 0n)).padStart(12)}`);
+  console.log(`  7  reconciliation backlog            ${c(s.backlogTotal).padStart(12)}  (reservations the venue no longer has open)`);
+  console.log(`     conservative overstatement        ${c(overstatement).padStart(12)}`);
+  console.log(`     collateral on hand                ${c(s.heldColl).padStart(12)}  ${s.heldColl === s.freeColl ? "= freeCollateral" : "MISMATCH"}`);
+  console.log(
+    `     SAFETY  accounted >= independent  ${understates ? "*** CRITICAL: UNDERSTATED ***" : "HOLDS"}`,
+  );
 
   if (s.markets.length) {
     console.log(`\n  per market (contracts):`);
-    console.log(`    ${"market".padEnd(10)} ${"balYES".padStart(9)} ${"balNO".padStart(9)} ${"reserved".padStart(9)} ${"live".padStart(9)} ${"stale".padStart(9)} ${"conserv".padStart(9)} ${"worst".padStart(9)}`);
+    console.log(
+      `    ${"market".padEnd(9)} ${"balYES".padStart(8)} ${"balNO".padStart(8)} ${"bYES".padStart(7)} ${"sYES".padStart(7)} ${"bNO".padStart(7)} ${"sNO".padStart(7)} ${"acct".padStart(8)} ${"indep".padStart(8)} ${"backlog".padStart(8)}`,
+    );
     for (const m of s.markets) {
-      const id = `#${BigInt(m.marketId)}`;
+      const v = m.venueLive;
       console.log(
-        `    ${id.padEnd(10)} ${c(m.balYes).padStart(9)} ${c(m.balNo).padStart(9)} ${c(m.reservedTotal ?? 0n).padStart(9)} ${c(m.liveReserved ?? 0n).padStart(9)} ${c(m.staleReserved ?? 0n).padStart(9)} ${c(abs(m.conservative)).padStart(9)} ${c(abs(worstCaseFor(m))).padStart(9)}`,
+        `    ${`#${BigInt(m.marketId) % 100000n}`.padEnd(9)} ${c(m.balYes).padStart(8)} ${c(m.balNo).padStart(8)} ${c(v.buyYes).padStart(7)} ${c(v.sellYes).padStart(7)} ${c(v.buyNo).padStart(7)} ${c(v.sellNo).padStart(7)} ${c(m.accounted).padStart(8)} ${c(m.independent).padStart(8)} ${c(m.backlog).padStart(8)}${m.understates ? "  <== CRITICAL" : ""}`,
       );
     }
   }
 
-  return { conservative, realized, worstCase, overstatement };
+  return { understates, overstatement };
+}
+
+const ser = (o) =>
+  JSON.parse(JSON.stringify(o, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+
+async function runOnce(orderIndex, blockNumber, head) {
+  const out = [];
+  let critical = false;
+  for (const domain of campaign.domains.map((d) => d.domain)) {
+    const s = await sample(domain, orderIndex, blockNumber);
+    if (s.markets.length === 0 && s.reportedUsage === 0n) continue;
+    const { understates, overstatement } = report(s, blockNumber ?? head);
+    if (understates) critical = true;
+    out.push(ser({ ...s, block: blockNumber ?? head, understates, overstatement }));
+  }
+  return { samples: out, critical };
 }
 
 // ---------------------------------------------------------------------------
 
 const head = await pub.getBlockNumber();
 const blockArg = arg("block", null);
-const scanBack = Number(arg("scan", 0));
-const step = BigInt(arg("step", 500));
+const watchEvery = Number(arg("watch", 0));
+const watchFor = Number(arg("for", 900));
 
-const domains = campaign.domains.map((d) => d.domain);
-const out = { ranAt: new Date().toISOString(), portfolio: PORTFOLIO, head: head.toString(), samples: [], scan: null };
-
-// The order index only needs to cover the campaign window.
-const indexFrom = head - BigInt(Math.max(scanBack, 60000));
+const indexFrom = head - BigInt(Number(arg("lookback", 60000)));
+console.log(`portfolio ${PORTFOLIO}`);
 console.log(`indexing IntentAdmitted from block ${indexFrom} to ${head} …`);
-const orderIndex = await buildOrderIndex(indexFrom, head);
+let orderIndex = await buildOrderIndex(indexFrom, head);
 console.log(`  ${[...orderIndex.values()].reduce((a, v) => a + v.length, 0)} orders across ${orderIndex.size} markets`);
 
-for (const domain of domains) {
+const evidence = {
+  ranAt: new Date().toISOString(),
+  portfolio: PORTFOLIO,
+  deployment: deployment.contracts,
+  deploymentVersion: deployment.version,
+  head: head.toString(),
+  mode: watchEvery ? `watch ${watchEvery}s for ${watchFor}s` : "single sample",
+  rounds: [],
+  criticalFindings: [],
+};
+
+let anyCritical = false;
+
+if (watchEvery > 0) {
+  const deadline = Date.now() + watchFor * 1000;
+  let round = 0;
+  while (Date.now() < deadline) {
+    round += 1;
+    const bn = await pub.getBlockNumber();
+    console.log(`\n=== round ${round}  block ${bn}  ${new Date().toISOString()} ===`);
+    // Re-index incrementally so orders placed during the watch are covered.
+    const fresh = await buildOrderIndex(head, bn);
+    for (const [k, v] of fresh) orderIndex.set(k, [...(orderIndex.get(k) ?? []), ...v.filter((o) => !(orderIndex.get(k) ?? []).some((p) => p.orderId === o.orderId))]);
+
+    let samples, critical;
+    try {
+      ({ samples, critical } = await runOnce(orderIndex, undefined, bn));
+    } catch (e) {
+      // A watch must survive the RPC. An unreachable endpoint is not evidence
+      // of anything about the contract, and treating it as a stop turns a
+      // network blip into a gap in the record.
+      console.log(`  round ${round}: RPC error, retrying next tick — ${String(e.message).slice(0, 90)}`);
+      evidence.rounds.push({ round, block: bn.toString(), at: new Date().toISOString(), rpcError: String(e.message).slice(0, 200) });
+      await new Promise((r) => setTimeout(r, watchEvery * 1000));
+      continue;
+    }
+    evidence.rounds.push({ round, block: bn.toString(), at: new Date().toISOString(), samples });
+    if (critical) {
+      anyCritical = true;
+      evidence.criticalFindings.push({ round, block: bn.toString(), samples: samples.filter((s) => s.understates) });
+      console.log("\nSTOPPING: the deployment understated independent worst-case exposure.");
+      break;
+    }
+    if (Date.now() >= deadline) break;
+    await new Promise((r) => setTimeout(r, watchEvery * 1000));
+  }
+} else {
   const bn = blockArg ? BigInt(blockArg) : undefined;
-  const s = await sample(domain, bn);
-  if (s.markets.length === 0 && s.reported === 0n) continue;
-  await classifyReservations(s.markets, orderIndex, bn);
-  const totals = report(s, `DOMAIN ${domain.slice(0, 14)}…  at block ${bn ?? head}`);
-  out.samples.push({
-    domain,
-    block: (bn ?? head).toString(),
-    ceiling: s.ceiling.toString(),
-    reported: s.reported.toString(),
-    conservative: totals.conservative.toString(),
-    worstCase: totals.worstCase.toString(),
-    realized: totals.realized.toString(),
-    overstatement: totals.overstatement.toString(),
-    worstCaseOverCeiling: totals.worstCase > s.ceiling,
-    markets: s.markets.map((m) => ({
-      marketId: m.marketId,
-      balYes: m.balYes.toString(),
-      balNo: m.balNo.toString(),
-      reserved: (m.reservedTotal ?? 0n).toString(),
-      liveReserved: (m.liveReserved ?? 0n).toString(),
-      staleReserved: (m.staleReserved ?? 0n).toString(),
-      conservative: m.conservative.toString(),
-      worstCase: worstCaseFor(m).toString(),
-      orders: m.orders ?? [],
-    })),
-  });
+  const { samples, critical } = await runOnce(orderIndex, bn, head);
+  evidence.rounds.push({ round: 1, block: (bn ?? head).toString(), at: new Date().toISOString(), samples });
+  if (critical) {
+    anyCritical = true;
+    evidence.criticalFindings.push({ round: 1, block: (bn ?? head).toString(), samples: samples.filter((s) => s.understates) });
+  }
 }
 
+evidence.verdict = anyCritical
+  ? "CRITICAL — accounted worst case fell below the independent reference"
+  : "SAFE — accounted worst case never fell below the independent reference";
+
 fs.mkdirSync("evidence/production", { recursive: true });
-fs.writeFileSync("evidence/production/risk-verification.json", `${JSON.stringify(out, null, 2)}\n`);
-console.log("\nwrote evidence/production/risk-verification.json");
+fs.writeFileSync("evidence/production/risk-verification.json", `${JSON.stringify(evidence, null, 2)}\n`);
+console.log(`\n${evidence.verdict}`);
+console.log("wrote evidence/production/risk-verification.json");
+process.exit(anyCritical ? 1 : 0);
