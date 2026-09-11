@@ -1,7 +1,7 @@
 # Supabase project configuration for AIRSPACE.
 # The project ref is public. Keys and the DB password live only in .env.local
 # (gitignored) and, in production, in Cloudflare Worker secrets.
-project_id = "ldhkqnedurkaxehufchg"
+project_id = "qybfoitpdvvqwalxzcpo"
 
 [db]
 major_version = 15

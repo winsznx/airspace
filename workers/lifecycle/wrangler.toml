@@ -29,6 +29,6 @@ CHAIN_ID = "50312"
 SHANNON_RPC = "https://dream-rpc.somnia.network"
 SHANNON_RPC_FALLBACK = "https://rpc.ankr.com/somnia_testnet"
 AIRSPACE_FACTORY = "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732"
-SUPABASE_URL = "https://ldhkqnedurkaxehufchg.supabase.co"
+SUPABASE_URL = "https://qybfoitpdvvqwalxzcpo.supabase.co"
 
 # Secrets (wrangler secret put): SUPABASE_SERVICE_ROLE_KEY, KEEPER_PRIVATE_KEY

@@ -139,7 +139,10 @@ export async function ingest(env: Env): Promise<IngestReport> {
   const { data: known } = await db
     .from("portfolios")
     .select("id, portfolio_address")
-    .eq("chain_id", cid);
+    .eq("chain_id", cid)
+    // Only this factory's portfolios: the superseded 1.0.0 deployment's rows are
+    // still in the table, and its logs are not v2's to project.
+    .eq("factory_address", lower(factory));
   for (const p of (known ?? []) as Array<{
     id: string;
     portfolio_address: string;

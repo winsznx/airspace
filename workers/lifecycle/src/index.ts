@@ -4,6 +4,7 @@ import { binaryMarketAbi, binaryPoolAbi, binaryModuleAbi, DREAMDEX, erc6909Abi }
 import { createServiceDb, toBigInt } from "@airspace/db";
 import { createPublicClient, createWalletClient, http, fallback, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { blockedKeys, jobKey, type JobRow } from "./planning.js";
 
 /**
  * AIRSPACE lifecycle worker.
@@ -76,20 +77,69 @@ function keeper(env: Env) {
 // Scheduled scan — plan work, enqueue it, never do it inline
 // ---------------------------------------------------------------------------
 
-async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
+/**
+ * A scan must finish well inside the one-minute cron interval. It once did not:
+ * it walked every portfolio ever indexed, probed the chain for each open
+ * reservation in turn, and ran for longer than a minute, so scans overlapped and
+ * re-queued the same work continuously. The budget makes overrunning impossible;
+ * whatever is left is picked up on the next pass.
+ */
+const RUN_BUDGET_MS = 25_000;
+const MAX_ENQUEUE_PER_RUN = 40;
+const COOLDOWNS = { doneMs: 30 * 60_000, failedMs: 30 * 60_000 };
+/** Finished and failed jobs are history nobody reads; keep a few days of it. */
+const JOB_RETENTION_MS = 3 * 24 * 60 * 60_000;
+/** A job that has been pending this long is not going to run. Fail it so it stops blocking. */
+const STALE_JOB_MS = 30 * 60_000;
+
+async function scan(env: Env): Promise<{ portfolios: number; queued: number; skipped: number; budgetHit: boolean }> {
+  const startedAt = Date.now();
+  const overBudget = () => Date.now() - startedAt > RUN_BUDGET_MS;
   const db = createServiceDb(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
   const client = pub(env);
   const chainId = Number(env.CHAIN_ID ?? 50312);
 
+  // Only portfolios of the CURRENT factory. Every portfolio the indexer ever saw
+  // is still in the table, including the superseded 1.0.0 deployment, and a
+  // keeper has no business sending transactions to any of them.
   const { data: portfolios } = await db
     .from("portfolios")
     .select("id,portfolio_address")
     .eq("chain_id", chainId)
-    .limit(500);
+    .eq("factory_address", env.AIRSPACE_FACTORY.toLowerCase())
+    .limit(100);
+
+  // Release the dedupe slot of work that will never run, so it is retried
+  // (subject to the cooldown) rather than blocking its key for good.
+  await db
+    .from("reconciliation_jobs")
+    .update({ status: "FAILED", last_error: "expired: not executed within 30 minutes", updated_at: new Date().toISOString() })
+    .in("status", ["PENDING", "RUNNING"])
+    .lt("updated_at", new Date(Date.now() - STALE_JOB_MS).toISOString());
+
+  await pruneJobHistory(db);
 
   let queued = 0;
+  let skipped = 0;
+  const enqueueJob = async (portfolioId: string, job: Job): Promise<void> => {
+    await enqueue(env, db, portfolioId, job);
+    queued++;
+  };
+
   for (const p of portfolios ?? []) {
+    if (overBudget() || queued >= MAX_ENQUEUE_PER_RUN) break;
     const address = p.portfolio_address as Address;
+
+    // One query for everything already accounted for, instead of one insert per
+    // candidate that a unique index then has to reject.
+    const recentSince = new Date(Date.now() - Math.max(COOLDOWNS.doneMs, COOLDOWNS.failedMs)).toISOString();
+    const { data: jobs } = await db
+      .from("reconciliation_jobs")
+      .select("kind,order_key,market_id,status,updated_at")
+      .eq("portfolio_id", p.id)
+      .or(`status.in.(PENDING,RUNNING),updated_at.gte.${recentSince}`)
+      .limit(500);
+    const blocked = blockedKeys((jobs ?? []) as JobRow[], Date.now(), COOLDOWNS);
 
     // 1. Resting orders whose market has rolled, or that the book no longer
     //    holds. Releasing them returns headroom the portfolio is retaining.
@@ -101,6 +151,12 @@ async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
       .limit(100);
 
     for (const r of open ?? []) {
+      if (overBudget() || queued >= MAX_ENQUEUE_PER_RUN) break;
+      // Already accounted for: no chain probe and no database write.
+      if (blocked.has(jobKey("release-order", r.order_key as string, null))) {
+        skipped++;
+        continue;
+      }
       const stillLive = await orderStillLive(
         client,
         r.pool_address as Address,
@@ -109,14 +165,13 @@ async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
         address,
       );
       if (!stillLive) {
-        await enqueue(env, db, {
+        await enqueueJob(p.id as string, {
           kind: "release-order",
           chainId,
           portfolio: address,
           orderKey: r.order_key as `0x${string}`,
           reason: "order no longer live on the book",
         });
-        queued++;
       }
     }
 
@@ -130,16 +185,19 @@ async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
       .limit(100);
 
     for (const t of tracked ?? []) {
-      const terminal = await marketTerminal(client, t.market_id as MarketId);
-      if (terminal) {
-        await enqueue(env, db, {
+      if (overBudget() || queued >= MAX_ENQUEUE_PER_RUN) break;
+      if (blocked.has(jobKey("release-settled", null, t.market_id as string))) {
+        skipped++;
+        continue;
+      }
+      if (await marketTerminal(client, t.market_id as MarketId)) {
+        await enqueueJob(p.id as string, {
           kind: "release-settled",
           chainId,
           portfolio: address,
           marketId: t.market_id as MarketId,
           reason: "market resolved or voided",
         });
-        queued++;
       }
     }
 
@@ -152,6 +210,7 @@ async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
       .limit(50);
 
     for (const d of domains ?? []) {
+      if (overBudget() || queued >= MAX_ENQUEUE_PER_RUN) break;
       const ids = (await client.readContract({
         address,
         abi: airspacePortfolioAbi,
@@ -162,41 +221,71 @@ async function scan(env: Env): Promise<{ portfolios: number; queued: number }> {
       // Only prune when the set is filling up: pruning is cheap but not free.
       if (ids.length < 24) continue;
       for (const marketId of ids) {
+        if (overBudget() || queued >= MAX_ENQUEUE_PER_RUN) break;
+        if (blocked.has(jobKey("prune-market", null, marketId))) {
+          skipped++;
+          continue;
+        }
         if (await prunable(client, address, marketId)) {
-          await enqueue(env, db, {
+          await enqueueJob(p.id as string, {
             kind: "prune-market",
             chainId,
             portfolio: address,
             marketId,
             reason: `domain set at ${ids.length}/48`,
           });
-          queued++;
         }
       }
     }
   }
 
-  return { portfolios: (portfolios ?? []).length, queued };
+  return { portfolios: (portfolios ?? []).length, queued, skipped, budgetHit: overBudget() || queued >= MAX_ENQUEUE_PER_RUN };
 }
 
-/** Insert the job (deduped by a partial unique index) and publish it. */
-async function enqueue(env: Env, db: ReturnType<typeof createServiceDb>, job: Job): Promise<void> {
-  const { data: pf } = await db
-    .from("portfolios")
-    .select("id")
-    .eq("portfolio_address", job.portfolio.toLowerCase())
-    .maybeSingle();
+/**
+ * Drop one hour of old job history per pass.
+ *
+ * Bounded on purpose: a single unbounded delete over a large backlog would be a
+ * long statement against a small database. One window per minute clears any
+ * backlog in time and costs a steady state almost nothing.
+ */
+async function pruneJobHistory(db: ReturnType<typeof createServiceDb>): Promise<void> {
+  const cutoff = Date.now() - JOB_RETENTION_MS;
+  const { data: oldest } = await db
+    .from("reconciliation_jobs")
+    .select("updated_at")
+    .in("status", ["DONE", "FAILED"])
+    .lt("updated_at", new Date(cutoff).toISOString())
+    .order("updated_at", { ascending: true })
+    .limit(1);
+  const first = oldest?.[0]?.updated_at as string | undefined;
+  if (!first) return;
 
+  const from = new Date(first).getTime();
+  const to = Math.min(from + 60 * 60_000, cutoff);
+  await db
+    .from("reconciliation_jobs")
+    .delete()
+    .in("status", ["DONE", "FAILED"])
+    .gte("updated_at", new Date(from).toISOString())
+    .lt("updated_at", new Date(to).toISOString());
+}
+
+/**
+ * Insert the job and publish it. The caller has already checked the job is not
+ * accounted for; the partial unique index is only the backstop for a race with
+ * another writer, and losing that race is success, not an error.
+ */
+async function enqueue(env: Env, db: ReturnType<typeof createServiceDb>, portfolioId: string, job: Job): Promise<void> {
   const { error } = await db.from("reconciliation_jobs").insert({
-    portfolio_id: pf?.id ?? null,
+    portfolio_id: portfolioId,
     chain_id: job.chainId,
     kind: job.kind,
     market_id: job.marketId ?? null,
     order_key: job.orderKey ?? null,
     reason: job.reason ?? null,
   });
-  // 23505 = already queued. That is success, not an error: the dedupe index is
-  // what stops an event burst from flooding the queue.
+  // 23505 = already queued. That is success, not an error.
   if (error && error.code !== "23505") throw new Error(`enqueue failed: ${error.message}`);
   if (!error) await env.RECONCILE_QUEUE.send(job);
 }
@@ -440,12 +529,15 @@ export default {
           job,
         ).in("status", ["PENDING", "RUNNING"]);
 
-        // A suspect release leaves the reservation visibly broken rather than
-        // quietly gone, so an operator can see there is a projection to rebuild.
+        // A suspect release means the contract has no record under this key, so
+        // the projection row is wrong. It is retired (EXPIRED) rather than left
+        // in the set the scan re-examines: leaving it there re-queued the same
+        // release every minute and grew the job table to hundreds of thousands
+        // of rows. The job row keeps the note, so the defect stays findable.
         if (result.suspect && job.orderKey) {
           await db
             .from("reservations")
-            .update({ state: "NEEDS_RECONCILIATION", updated_at: new Date().toISOString() })
+            .update({ state: "EXPIRED", updated_at: new Date().toISOString() })
             .eq("order_key", job.orderKey);
         }
 
