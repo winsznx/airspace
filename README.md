@@ -176,12 +176,13 @@ contracts/       AirspacePortfolio + factory, 100 tests incl. 9 invariants, 16 a
                  scenarios, 2 independent reference implementations, and 10 live-fork
 packages/        types · protocol · risk · sdk · db      shared, no duplicated logic
 workers/
-  api/           Hono + one Durable Object per portfolio; serves the web app
-  indexer/       cron: chain logs to projections, idempotent by unique key
+  api/           Hono + one Durable Object per portfolio, holding its event history
+                 decoded from the chain; serves the web app. No database.
+  indexer/       cron: chain logs to the keeper's tables, idempotent by unique key
   lifecycle/     cron + queue: permissionless release and prune
   agent/         three sample agents, one deployment and one key each
 apps/web/        React; the ceiling line, the gate stack, the receipt
-supabase/        14 tables of projections, RLS
+supabase/        the lifecycle keeper's tables (14), RLS. Not read by the app.
 scripts/         deploy, live proof, campaign, adversarial, secret scan
 contributions/   the DreamDEX SDK defect: report, reproduction, patch
 engineering/     the hostile validation that produced the design. Immutable.
@@ -216,6 +217,9 @@ dependency on catching a market fill at the right moment:
 node scripts/live-proof.mjs
 ```
 
+To record a walkthrough of the live app, entirely in the browser:
+[DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+
 ---
 
 ## Engineering evidence
@@ -232,7 +236,7 @@ remediation, and the live verification runs against v2 — lives in
 | | |
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | What the layers are and which arrows carry authority |
-| [DECISIONS.md](DECISIONS.md) | Fourteen choices that could have gone the other way, and the measurement that settled each |
+| [DECISIONS.md](DECISIONS.md) | Nineteen choices that could have gone the other way, and the measurement that settled each |
 | [SECURITY.md](SECURITY.md) | Trust boundaries, recovery, known limitations, secret handling |
 | [SETUP.md](SETUP.md) | Clean-clone to running |
 | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) | The upstream defect we found and fixed |

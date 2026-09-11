@@ -32,11 +32,11 @@ Everything in this section runs with **no credentials at all**.
 ```bash
 git clone <repo> airspace && cd airspace
 pnpm install
-forge install                # forge-std, into lib/
+git clone --depth 1 --branch v1.16.2 https://github.com/foundry-rs/forge-std lib/forge-std   # pinned; lib/ is untracked
 
 pnpm typecheck               # every workspace
-pnpm test                    # 45 unit tests across packages and workers
-pnpm contracts:test          # 42 Solidity tests: unit, cadence, key mirror, invariants
+pnpm test                    # 83 unit tests across packages and workers
+pnpm contracts:test          # 90 Solidity tests: unit, adversarial, invariants, reference oracles
 pnpm contracts:sizes         # AirspacePortfolio must stay under 24,576 bytes
 pnpm abi:check               # the committed ABI matches the compiled contracts
 pnpm secrets:scan            # nothing publishable contains a secret
@@ -80,10 +80,11 @@ Vite proxies `/api` to it.
 pnpm dev            # api on :8787, web on :5173
 ```
 
-The API needs Supabase to serve projections. Without it, `/api/health`,
-`/api/config`, `/api/markets` and `/api/intents/simulate` still work, because
-those read the chain directly — the admission preview, which is the product's
-central moment, has no database dependency at all.
+The API needs no database and no credentials. Every route reads the chain: the
+live snapshot, the admission preview, and the agents, activity, receipts,
+reservations and positions lists, which the portfolio's Durable Object decodes
+from the portfolio's own logs and re-measures against the contract. Supabase
+matters only to the lifecycle keeper (below).
 
 ---
 
@@ -95,8 +96,8 @@ Safe to commit, and already committed:
 
 - Deployed contract addresses (`contracts/deployments/50312.json`)
 - RPC endpoints
-- The Supabase project URL and anon/publishable key — RLS-scoped, read-only on
-  chain-derived projections, and designed to ship in a browser bundle
+- The Supabase project URL, a public identifier. The keeper's tables are
+  RLS-scoped and the app never reads them
 - The WalletConnect project id — it identifies the dApp to the relay and
   authorises nothing
 
@@ -124,7 +125,7 @@ that, and the scan is a CI gate.
 
 | Variable | Where it belongs |
 | --- | --- |
-| `SUPABASE_SERVICE_ROLE_KEY` | `workers/*/.dev.vars` locally, `wrangler secret put` in production |
+| `SUPABASE_SERVICE_ROLE_KEY` | indexer and lifecycle only: `workers/*/.dev.vars` locally, `wrangler secret put` in production. The API holds none. |
 | `INDEXER_TOKEN` | same |
 | `AGENT_PRIVATE_KEY` | one per agent deployment, `wrangler secret put --env <name>` |
 | Deployer / owner key | `.wallets.json`, gitignored, chmod 600, throwaway testnet keys |
@@ -135,14 +136,18 @@ Copy `.env.example` to `.env.local` and fill it in. Copy each
 
 ```bash
 cp .env.example .env.local && chmod 600 .env.local
-for w in api indexer lifecycle agent; do
+for w in indexer lifecycle agent; do
   cp workers/$w/.dev.vars.example workers/$w/.dev.vars 2>/dev/null && chmod 600 workers/$w/.dev.vars
 done
 ```
 
 ---
 
-## Your own Supabase
+## Your own Supabase (for the lifecycle keeper)
+
+Optional. The app runs without it; the keeper that sends background releases and
+prunes needs it. A fresh database starts empty and the indexer rebuilds it from
+the chain, reading about 20,000 blocks a minute from the factory's first block.
 
 ```bash
 supabase link --project-ref <your-ref>
@@ -159,8 +164,8 @@ curl "$SUPABASE_URL/rest/v1/chain_events?select=id&limit=1" \
   -H "apikey: $SUPABASE_ANON_KEY"        # 200 with an empty array, or 401
 ```
 
-Then put the URL and anon key in each Worker's `wrangler.toml` `[vars]`, and the
-service-role key in a secret.
+Then put the URL in the indexer's and lifecycle's `wrangler.toml` `[vars]`, and the
+service-role key in a secret on each. The API needs neither.
 
 ---
 
@@ -201,7 +206,6 @@ wrangler deploy -c workers/api/wrangler.toml
 wrangler deploy -c workers/indexer/wrangler.toml
 wrangler deploy -c workers/lifecycle/wrangler.toml
 
-wrangler secret put SUPABASE_SERVICE_ROLE_KEY -c workers/api/wrangler.toml
 wrangler secret put SUPABASE_SERVICE_ROLE_KEY -c workers/indexer/wrangler.toml
 wrangler secret put INDEXER_TOKEN             -c workers/indexer/wrangler.toml
 wrangler secret put SUPABASE_SERVICE_ROLE_KEY -c workers/lifecycle/wrangler.toml

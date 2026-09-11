@@ -251,6 +251,10 @@ decision, which is why RLS can safely expose chain-derived tables to anonymous
 readers: publishing a projection of public chain data leaks nothing, and the
 service-role key never leaves a Worker.
 
+*Since narrowed by [decision 19](#19-the-app-reads-the-chain-not-a-database): the
+web app no longer reads Supabase at all. It remains only as the lifecycle keeper's
+work queue.*
+
 ---
 
 ## 13. The indexer chunks at 1,000 blocks because both public RPCs say so
@@ -414,3 +418,53 @@ revert rather than out-of-gas.
 `--gas-limit` does not override it for scripts. `--gas-estimate-multiplier 2000`
 does. Recorded here because the first two deployment attempts were lost to it and
 the failure gives no useful signal on its own.
+
+---
+
+## 19. The app reads the chain, not a database
+
+**Decision.** Every list the web app shows (agents, activity, receipts,
+reservations, positions, reconciliation) is decoded from the portfolio's own logs,
+held in that portfolio's Durable Object, and re-measured against the contract
+before it is returned. Supabase is not on any read path.
+
+**What made it necessary.** The agents page went empty while the database was down,
+including agents that could already sign valid intents. The admission preview was
+gated on the same list. A risk product whose lists vanish with a database is
+reporting on the database, not on the portfolio.
+
+**What we measured.** The Supabase project hit its plan's egress limit (6.555 of
+5 GB) while the database itself was 0.226 of 0.5 GB. The cause was not chain data.
+`reconciliation_jobs` held about 317,000 rows (234,130 done, 82,869 failed, 187
+pending) because the lifecycle scan re-queued the same stuck reservations every
+minute and a finished job never blocked the next identical one. The scan also
+walked every portfolio ever indexed, including the superseded 1.0.0 deployment,
+probing the chain for each reservation in turn, so it ran longer than its own
+one-minute interval and scans overlapped. The logs showed the result: about two
+lookup-and-insert attempts a second, around the clock, almost all rejected by a
+unique index.
+
+**The design.**
+
+- Reservations and positions are never counted from events. Events say what was
+  opened and released; the live figure is `orderRec` against the venue's order, and
+  ERC-6909 balances for holdings. This is decision 2 applied to the read side.
+- A scan that would take longer than a request is bounded per call and resumed by
+  the Durable Object's alarm, which persists how far it has read. A window that
+  fails is retried, never skipped: skipping one silently drops events for good.
+- History still loading is reported as loading, and a fully-loaded history is
+  cross-checked against the contract's own `reservedCollateral`. A partial list is
+  never presented as a whole one.
+- Recovered refusals and display names live in the same Durable Object, because
+  neither has a home on chain.
+
+**What Supabase still does.** The lifecycle keeper plans work from it. That scan is
+now scoped to the current factory, bounded to 25 seconds and 40 jobs a run, skips
+work already queued or recently finished, expires jobs that will never run, and
+retires reservations the contract has no record of instead of re-examining them
+forever. Finished job history is pruned after three days.
+
+**Cost.** A portfolio deployed long ago spends a few minutes reading its history the
+first time it is opened, during which the app says so. The lists are correct for
+the blocks read so far and complete when it finishes.
+

@@ -29,7 +29,7 @@ this repository can be deleted and your capital is still recoverable.
 | Owner key | Fully | `withdraw` checks ownership and nothing else |
 | Registered agent | Into admitted orders only | its own policy, then the shared envelope |
 | API / indexer / lifecycle Workers | No | no owner authority exists off-chain |
-| Supabase | No | projections; nothing read from it authorises anything |
+| Supabase | No | the lifecycle keeper's work queue; the app reads nothing from it |
 | Web app | No | prepares transactions your wallet signs |
 
 There is no admin key, no pause, no upgrade path on a live portfolio, and no
@@ -179,13 +179,13 @@ that way: `.env`, `.env.*` (except `.env.example`), `.dev.vars`, `.wallets.json`
 | --- | --- |
 | Deployer / owner keys | `.wallets.json`, gitignored, chmod 600, testnet throwaways |
 | Agent keys | Cloudflare Worker secrets, one per agent deployment |
-| `SUPABASE_SERVICE_ROLE_KEY` | Cloudflare Worker secret; never in a bundle or a response body |
+| `SUPABASE_SERVICE_ROLE_KEY` | Cloudflare Worker secret on the indexer and lifecycle Workers only; never in a bundle or a response body. The API holds no credentials. |
 | `INDEXER_TOKEN` | Cloudflare Worker secret |
 | Cloudflare API token | CI secret; local development uses `wrangler login` |
 
-Public by design and safe to commit: the Supabase project URL and anon/publishable
-key (RLS-scoped, read-only on chain-derived projections), deployed contract
-addresses, and RPC endpoints.
+Public by design and safe to commit: the Supabase project URL (an identifier; its
+tables are RLS-scoped and the app never reads them), deployed contract addresses,
+and RPC endpoints.
 
 `.env.example` documents variable names and never values.
 

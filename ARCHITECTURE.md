@@ -23,28 +23,30 @@ flowchart TB
     end
 
     subgraph off["Off-chain — observation only"]
-        IX["indexer Worker<br/>logs to projections"]
+        API["api Worker<br/>Hono + a Durable Object per portfolio<br/>(its event history, from the chain)"]
+        IX["indexer Worker<br/>feeds the keeper"]
         LC["lifecycle Worker<br/>release · prune"]
-        API["api Worker<br/>Hono + Durable Objects"]
-        DB[("Supabase<br/>projections, RLS")]
+        DB[("Supabase<br/>the keeper's work queue")]
         WEB["apps/web<br/>React"]
     end
 
     A1 & A2 & A3 -->|"execute(Intent)"| P
     F -.->|clones| P
     P <-->|"place · read balances"| D
+    P -->|logs| API
     P -->|logs| IX
     IX --> DB
+    DB --> LC
     LC -->|"releaseOrder · releaseSettled"| P
-    API --> DB
     API -->|"previewIntent · live reads"| P
     WEB --> API
     WEB -->|"wallet-signed writes"| P
 ```
 
 Two arrows carry authority: an agent calling `execute`, and an owner's wallet
-calling a policy or recovery function. Every other arrow is a read or a
-projection.
+calling a policy or recovery function. Every other arrow is a read. The web app
+reads nothing from a database: what it shows is decoded from the portfolio's own
+logs and re-measured against the contract.
 
 ---
 
@@ -180,7 +182,8 @@ safe direction, and any party can clear it.
 
 ### `workers/indexer`
 
-Cron every minute. Reads factory and portfolio logs, writes projections.
+Cron every minute. Reads the current factory's portfolio logs and writes the tables
+the lifecycle keeper plans from. The web app does not read them.
 
 Idempotent by construction: every log lands in `chain_events` keyed by
 `(chain_id, tx_hash, log_index)`. A replayed block, a retried cron, a duplicate
@@ -196,10 +199,24 @@ arithmetic, mirroring the contract's own measured-not-accumulated rule.
 
 ### `workers/api`
 
-Hono on Workers, with one Durable Object per portfolio. The DO holds a 15-second
-snapshot and serves a WebSocket. On RPC failure it serves its last good snapshot
-tagged `stale: { since, reason }`, and the UI says "Delayed — showing last known
-state" rather than showing a stale number as if it were live.
+Hono on Workers, with one Durable Object per portfolio. It holds no credentials and
+touches no database. The DO does two jobs.
+
+**Live state.** A 15-second snapshot served over a WebSocket. On RPC failure it
+serves its last good snapshot tagged `stale: { since, reason }`, and the UI says
+"Delayed — showing last known state" rather than showing a stale number as if it
+were live. The domains it covers include every domain the portfolio has configured,
+taken from its own logs, so a series that rolled away never hides an enforced
+ceiling.
+
+**The event history.** It decodes the portfolio's own logs into a persisted store
+and derives every list from it: agents, activity, receipts, reservations,
+positions, reconciliation. Events say what was opened and released; what is true
+now is re-read from the contract (`orderRec` against the venue's order for
+reservations, the outcome token's balances for positions). A portfolio deployed
+long ago reads its history in bounded steps driven by the DO's alarm, and every
+response says whether the history is complete. A step that fails is retried, never
+skipped. See [DECISIONS.md](DECISIONS.md#19-the-app-reads-the-chain-not-a-database).
 
 `POST /api/intents/simulate` calls the contract's `previewIntent`. It does not
 re-implement a single check.
@@ -218,6 +235,13 @@ retry and a dead-letter queue. Terminal refusals — `OrderStillLive`,
 `NothingToRelease`, `MarketNotSettled`, `MarketStillActive`, `NotTracked` — are
 successes, not failures: they mean another caller got there first.
 
+The scan covers only the current factory's portfolios, finishes inside a fixed time
+and job budget so scans cannot overlap, and skips work already queued or recently
+finished. A job that never runs expires, and a reservation the contract has no
+record of is retired rather than re-examined every minute. See
+[DECISIONS.md](DECISIONS.md#19-the-app-reads-the-chain-not-a-database) for what
+happened when it did not.
+
 ### `workers/agent`
 
 Three deployments, three keys, three KV namespaces, no shared state. They discover
@@ -227,15 +251,17 @@ agent keeps trading when this backend is down. See
 
 ### Supabase
 
-Fourteen tables of projections. RLS allows anonymous reads of chain-derived
-tables and no writes at all; `users`, `chain_events`, `chain_cursors` and
-`reconciliation_jobs` are service-role only. Publishing a projection of public
-chain data leaks nothing, and **no value read from this database may authorise an
-execution decision**.
+Fourteen tables, used only by the lifecycle keeper to plan work. RLS allows
+anonymous reads of chain-derived tables and no writes at all; `users`,
+`chain_events`, `chain_cursors` and `reconciliation_jobs` are service-role only.
+**The web app reads nothing from this database, and no value read from it may
+authorise an execution decision.** It can be empty, down or deleted and every page
+still shows the same thing; only background releases pause.
 
-`receipts.provenance` labels each field's origin. A value the contract asserted
-and a value a worker observed are different kinds of claim and are never rendered
-as the same thing.
+Provenance is carried by the API's own rows: a receipt built from a contract event
+is labelled `contract`, and a refusal recovered from a failed transaction is
+labelled `contract` because it was replayed against the chain, never because a
+worker claimed it.
 
 ### `apps/web`
 
@@ -261,7 +287,7 @@ render as their own segment rather than being guessed at.
 | Your owner key | Yes — `withdraw` reads nothing but ownership. |
 | A registered agent | Only into orders the contract admits, inside its own policy. |
 | The API / indexer / lifecycle Workers | No. No owner authority exists off-chain. |
-| Supabase | No. Projections only. |
+| Supabase | No. The keeper's work queue; the app reads nothing from it. |
 | The web app | No. It prepares transactions your wallet signs. |
 
 Custody by the contract was forced by the venue, not chosen —
@@ -280,11 +306,10 @@ flowchart LR
     PL --> RC["reconcile against<br/>measured balances"]
     RC --> L1["IntentAdmitted<br/>IntentReconciled"]
     R --> FT["failed transaction<br/>carries Refused(code)"]
-    L1 --> IX["indexer"]
+    L1 --> ES["portfolio Durable Object<br/>event history"]
     FT --> RP["/api/intents/report<br/>replays and verifies"]
-    IX --> DB[("Supabase")]
-    RP --> DB
-    DB --> UI["admission feed"]
+    RP --> ES
+    ES --> UI["admission feed"]
 ```
 
 The refused path and the admitted path reach the same feed by different routes,
