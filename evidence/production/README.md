@@ -2,22 +2,37 @@
 
 Everything here was produced by a script in `scripts/` against live Somnia
 Shannon and the deployed Cloudflare stack. Nothing is hand-written, and nothing
-is a mock.
+is a mock. All of it now describes **AIRSPACE 2.0.0**, the current deployment.
+
+**Start here if you are checking the safety claim:**
+[**`REMEDIATION.md`**](REMEDIATION.md) is the full account — root cause,
+corrected model, the independent oracle, the historical regression, the new
+deployment, and the live proof that replays the exact failure shape against
+2.0.0. [`CRITICAL-reservation-netting.md`](CRITICAL-reservation-netting.md) is
+the original finding, left exactly as written, with the resolution appended
+rather than rewritten in place.
 
 | File | What produced it | What it shows |
 | --- | --- | --- |
-| [`live-proof.json`](live-proof.json) | `scripts/live-proof.mjs` | The canonical A/B/C cross-agent refusal, end to end on production contracts |
-| [`campaign.json`](campaign.json) | `scripts/campaign-setup.mjs` | The portfolio, policies, domains and agents the campaigns ran against |
+| [**`REMEDIATION.md`**](REMEDIATION.md) | this remediation | **The full safety account: root cause → fix → proof. Read this first.** |
+| [`CRITICAL-reservation-netting.md`](CRITICAL-reservation-netting.md) | `scripts/risk-verifier.mjs` | The original finding against 1.0.0, with the resolution appended |
+| [`opposing-live.json`](opposing-live.json) | `scripts/opposing-live.mjs` | The exact 1.0.0 failure shape, rebuilt live against 2.0.0, with the v1 figure computed alongside for comparison |
+| [`risk-verification.json`](risk-verification.json) | `scripts/risk-verifier.mjs` | The independent verifier's live output — every quantity rebuilt from a primary source, never from the contract's own counters |
+| [**`long-campaign.json`**](long-campaign.json) | `scripts/long-campaign.mjs` | **3-hour unattended campaign with the verifier running inside the loop. 35 rounds, 177 intents, 43 admitted, 25 refused by the shared envelope, 30 permissionless releases, 0 RPC failovers, 0 worker errors. `criticalFindings: []` for the whole run.** |
+| [`live-proof.json`](live-proof.json) | `scripts/live-proof.mjs` | The canonical A/B/C cross-agent refusal, end to end, including the reconciliation step |
+| [`campaign.json`](campaign.json) | `scripts/campaign-setup.mjs` | The 2.0.0 portfolio, policies, domains and agents the campaigns ran against |
 | [`campaign-1.log`](campaign-1.log) | `scripts/campaign-run.mjs` | 25 rounds. Three on-chain failures that turned out to be gas, not refusals |
 | [`campaign-run-2.json`](campaign-run-2.json), [`campaign-2.log`](campaign-2.log) | `scripts/campaign-run.mjs` | 30 rounds after the gas fix. 32 admitted, 21 refused by the shared envelope |
-| [`adversarial.json`](adversarial.json) | `scripts/adversarial.mjs` | 13 hostile cases, 13 passes, nothing skipped |
 | [`scale.json`](scale.json) | `scripts/scale.mjs` | Read path at 100 portfolios / 1,000 agents / 10,000 intents |
-| [`deployment.json`](deployment.json) | recorded at deploy | Every deployed component, its trigger and its secret NAMES |
+| [`deployment.json`](deployment.json) | recorded at deploy | Every deployed component — 2.0.0 addresses, plus the superseded 1.0.0 ones, labelled |
 | [`numeric-precision.json`](numeric-precision.json) | found in production | A projection defect, its blast radius, and the proof the fix is right |
 | [`lifecycle-bookkeeping.json`](lifecycle-bookkeeping.json) | found in production | Three queue-bookkeeping defects that only appear under real batched load |
-| [`steady-state.json`](steady-state.json) | observed live | The deployed system running unattended, and the full loop closing |
-| [**`CRITICAL-reservation-netting.md`**](CRITICAL-reservation-netting.md) | `scripts/risk-verifier.mjs` | **An open safety-invariant failure. Read this before trusting any ceiling number.** |
-| [`risk-verification.json`](risk-verification.json) | `scripts/risk-verifier.mjs` | The raw measurements behind it |
+
+Two files that lived here — `adversarial.json` and `steady-state.json` — were
+measured against the **superseded 1.0.0 deployment** and have been removed from
+this directory as unlabelled duplicates: the sole copies now live in
+[`engineering/03-superseded-unsafe-v1/evidence/`](../../engineering/03-superseded-unsafe-v1/evidence/),
+where the whole broken deployment is preserved and clearly marked.
 
 ---
 
@@ -104,31 +119,32 @@ whole reason the contract never reads a projection.
 
 ## The loop closing, unattended
 
-`steady-state.json` is a snapshot of the deployed system with nobody driving it.
-Over about ten minutes, with no intervention:
+`steady-state.json` — now archived at
+[`engineering/03-superseded-unsafe-v1/evidence/steady-state.json`](../../engineering/03-superseded-unsafe-v1/evidence/steady-state.json)
+— caught the lifecycle self-healing with nobody driving it: usage rose to
+1,120,000,000 against a 500,000,000 ceiling on settled positions, all three
+agents were refused with no gas spent, the keeper released 172 orders and 7
+settled markets with no owner involved, usage fell to 10,000,000, and trading
+resumed on its own.
 
-```
-domain usage reaches 1,120,000,000 against a 500,000,000 ceiling
-  — realized positions in markets that had settled
-
-all three agents refused DOMAIN_RISK_EXCEEDED, none of them spending gas
-
-the lifecycle keeper releases 172 orders and 7 settled markets
-
-usage falls to 10,000,000
-
-the agents resume trading on their own; usage climbs back to 240,000,000
-```
-
-Nothing in that sequence was triggered by hand. The envelope tightened, refused
-everything, was cleared by permissionless releases, and reopened.
+The *usage figure itself* was measured under the 1.0.0 formula and is not cited
+as a safety reading — see `CRITICAL-reservation-netting.md` for why a 1.0.0
+number cannot be trusted at face value. What the observation demonstrates is
+architectural and survives the fix unchanged: `releaseOrder` and
+`pruneMarket` are permissionless, the envelope closes without an owner
+transaction, and it reopens the same way. A live re-run of the same shape
+against 2.0.0 is part of the ongoing long-run verifier
+(`risk-verification.json`).
 
 ---
 
 ## Reproducing
 
 ```bash
-node scripts/live-proof.mjs                       # needs funded testnet keys
+node scripts/live-proof.mjs                        # canonical A/B/C, needs funded testnet keys
+node scripts/opposing-live.mjs                      # the 1.0.0 failure shape, rebuilt against 2.0.0
+node scripts/risk-verifier.mjs                       # one independent sample
+node scripts/risk-verifier.mjs --watch 60 --for 1800 # continuous, writes SAFE/CRITICAL
 node scripts/campaign-setup.mjs --salt my-run
 node scripts/campaign-run.mjs --rounds 30 --every 12
 node scripts/adversarial.mjs

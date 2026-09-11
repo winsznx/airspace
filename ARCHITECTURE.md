@@ -129,20 +129,43 @@ which is stated in the UI. See
 
 ### How exposure is counted
 
-Per market, from ERC-6909 balances at evaluation time:
+A market is not one number. It is an INTERVAL of positions the portfolio could
+reach, and the risk is the widest point of it.
+
+Realized holdings come from ERC-6909 balances at evaluation time. Each resting
+order then widens exactly one bound, because each resolves independently:
 
 ```
-directional = |netYes − netNo|
+b  = bal(YES) − bal(NO)              what is held right now
+up = b + yesLong + yesShort          BUY_YES fills / SELL_YES escrow returns
+dn = b − noLong  − noShort           BUY_NO  fills / SELL_NO  escrow returns
+
+worstCase = max(|up|, |dn|)
 ```
 
-A matched YES/NO pair is a complete set and carries no directional risk, so it
-nets out. Across a domain, exposure is the **gross** sum of per-market
-directionals — never netted between markets. Being long one series and short
-another is two positions, not zero.
+A SELL escrows its outcome tokens at placement, not at fill — verified live,
+where each pool's outcome balance equalled its resting ask depth exactly. So a
+resting sell has already left `bal`, and what it exposes is the escrow returning
+if it is cancelled.
 
-Reservations for unfilled orders are added on top, because the risk an order will
-create exists from the moment it is admitted. Nothing is accumulated in a counter;
-see [DECISIONS.md](DECISIONS.md#2-exposure-is-measured-never-accumulated).
+Realized YES and NO net: a held complete set pays one unit whichever way the
+market resolves, so it carries no direction. Pending orders never net. A pending
+BUY_YES and a pending BUY_NO can each fill without the other, and treating them
+as cancelling is what made version 1.0.0 unsafe — see
+[SECURITY.md](SECURITY.md#the-safe-overstatement-invariant).
+
+Across a domain, exposure is the **gross** sum of per-market worst cases — never
+netted between markets. Two markets sharing a cadence domain establish no payoff
+equivalence, so being long one series and short another is two positions, not
+zero.
+
+Nothing is accumulated in a counter; see
+[DECISIONS.md](DECISIONS.md#2-exposure-is-measured-never-accumulated).
+
+The whole model is implemented a second time, independently and by a different
+method, in [`contracts/test/reference/ExposureOracle.sol`](contracts/test/reference/ExposureOracle.sol),
+which enumerates all sixteen fill combinations rather than evaluating a bound.
+Tests assert the contract never reports below it.
 
 ### Lifecycle, all permissionless
 

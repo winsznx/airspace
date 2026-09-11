@@ -326,3 +326,91 @@ bottleneck rather than the loop.
 `releaseSettled` and `pruneMarket` are permissionless and prove their claim
 against the venue, so the key needs gas and nothing else. It cannot move capital,
 change a policy or trade.
+
+---
+
+## 16. Worst-case exposure is an interval, and it is computed twice
+
+Version 1.0.0 collapsed each market to one netted figure:
+
+```
+(bal(YES) + yesLong − yesShort) − (bal(NO) + noLong − noShort)
+```
+
+That prices exactly one future, the one where every resting order fills at once.
+It is the most NETTED reading available, not the most conservative one, and it
+let a pending BUY_YES cancel a pending BUY_NO. Either can fill without the other.
+Live, it reported 80 against a true worst case of 1,170, under a 500 ceiling.
+
+The replacement tracks the reachable interval:
+
+```
+b  = bal(YES) − bal(NO)
+up = b + yesLong + yesShort
+dn = b − noLong  − noShort
+worst = max(|up|, |dn|)
+```
+
+Two things fall out of that shape and both are deliberate. Realized YES and NO
+still net, because a held complete set pays one unit whichever way the market
+resolves. Pending orders never net, in either direction.
+
+The `yesShort` term on the UPPER bound looks wrong until you know the venue: a
+SELL escrows its outcome tokens at placement, so those tokens are already out of
+`bal`, and cancelling the ask brings them back. We did not take that from the
+mock — the mock had it wrong. Four live Shannon pools were probed, and each
+pool's outcome-token balance equalled its resting ask depth exactly.
+
+### Why it is computed twice
+
+The v1 invariant asserted `domainRiskUsage <= CEILING`: the contract's own number
+checked against itself. An understatement made it pass, which is how the defect
+reached a funded deployment behind a green suite.
+
+So the model now has a second implementation that shares no helper, no library
+and no code path with the production contract, and reaches the answer a different
+way — [`ExposureOracle`](contracts/test/reference/ExposureOracle.sol) enumerates
+all sixteen combinations of fills instead of evaluating a closed form. The
+property `accounted >= independent` is asserted in named scenarios, under
+invariant fuzzing, and continuously against the live chain by
+[`scripts/risk-verifier.mjs`](scripts/risk-verifier.mjs), which rebuilds
+reservations from `getOrder` per order rather than reading the contract's
+counters.
+
+The same treatment was applied to the capital side rather than assuming it was
+fine because the bug was elsewhere: see
+[`CollateralOracle`](contracts/test/reference/CollateralOracle.sol).
+
+---
+
+## 17. The ceiling is an admission control, not a hard cap
+
+AIRSPACE guarantees that it never ADMITS an intent leaving a domain over its
+ceiling. It cannot guarantee usage stays under afterwards, and claiming otherwise
+would be a lie the tests would eventually have to be bent to support.
+
+Two routes move exposure with no admission involved: an outside counterparty
+filling a resting order, and a cancelled sell returning its escrow. Neither is
+preventable by an on-chain contract that does not control the venue.
+
+So the guarantee is asserted where it is actually made — inside the invariant
+handler, at the moment of every successful `execute`. The global assertion that
+replaced the old one proves the useful consequence instead: while over the
+ceiling, every risk-adding intent is refused, checked by previewing one against
+each tracked market rather than by restating the branch condition.
+
+The old global form passed in v1 only because that suite never admitted an order.
+
+---
+
+## 18. Somnia under-estimates deployment gas by roughly 11x
+
+`forge script --broadcast` sends its own estimate as the gas limit, and on Somnia
+that estimate is wrong for large deployments in a way that is not obvious: the
+2.0.0 implementation estimated 6,793,595 and actually consumed 79,033,439. The
+transaction fails with status 0 having burned the whole limit, which reads like a
+revert rather than out-of-gas.
+
+`--gas-limit` does not override it for scripts. `--gas-estimate-multiplier 2000`
+does. Recorded here because the first two deployment attempts were lost to it and
+the failure gives no useful signal on its own.

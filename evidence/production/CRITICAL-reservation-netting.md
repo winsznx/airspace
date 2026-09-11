@@ -1,6 +1,18 @@
 # CRITICAL: opposing reservations net against each other
 
-**Status: open. Not fixed. The contract is deployed with this defect.**
+**Status: RESOLVED in AIRSPACE 2.0.0.** The defective deployment was not
+upgraded — there is no upgrade authority — so it is preserved unchanged, along
+with the state that broke it, in
+[`engineering/03-superseded-unsafe-v1/`](../../engineering/03-superseded-unsafe-v1/).
+Do not fund `0x342d200aCF529905CC815D4ff9841053ea1c2D61`.
+
+The replacement is a separate deployment: factory
+`0xeD3D4552AFda96EfC5BF47c533E3302C655CB732`, implementation
+`0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4`, block 473593665.
+
+Everything below is the finding exactly as it was written, before any fix
+existed. It is left in the present tense on purpose. The resolution is recorded
+at the end.
 
 The safe-overstatement invariant does not hold. `domainRiskUsage` can report a
 number far **below** the portfolio's true maximum commitment, and the live
@@ -202,3 +214,94 @@ node scripts/risk-verifier.mjs --block 473461234 --scan 95000
 Archive state on the public Shannon RPC reaches roughly 100,000 blocks. Past
 that window the reads return `0x` and the reconstruction is no longer possible
 from this endpoint.
+
+
+---
+
+## Resolution
+
+### The corrected model
+
+A market is an INTERVAL of reachable positions, not a point. Each resting order
+resolves independently, so placing one widens exactly one bound:
+
+```
+b  = bal(YES) − bal(NO)              realized, held right now
+up = b + yesLong + yesShort          BUY_YES fills / SELL_YES escrow returns
+dn = b − noLong  − noShort           BUY_NO  fills / SELL_NO  escrow returns
+
+worstCase = max(|up|, |dn|)
+```
+
+A SELL escrows its outcome tokens at PLACEMENT. That was not assumed from the
+mock — it was probed on four live Shannon pools, each of whose outcome-token
+balance equalled its resting ask depth exactly. So a resting sell has already
+left `bal`, and what it exposes is the escrow returning if it is cancelled.
+The mock had modelled burn-on-fill, which hid the entire sell side from every
+test that used it, and was corrected.
+
+Realized YES and NO still net: a held complete set pays one unit whichever way
+the market resolves. Pending orders never net.
+
+Domain usage is the gross sum of per-market worst cases. Two markets sharing a
+cadence domain establish no payoff equivalence, so nothing offsets.
+
+### How it is checked
+
+The model is implemented a second time, independently, by a different method:
+[`contracts/test/reference/ExposureOracle.sol`](../../contracts/test/reference/ExposureOracle.sol)
+enumerates all sixteen combinations of fills rather than evaluating a bound. It
+shares no helper and no code path with the production contract. The property
+
+```
+AIRSPACE_ACCOUNTED_WORST_CASE >= INDEPENDENT_REFERENCE_WORST_CASE
+```
+
+is asserted in 16 named adversarial scenarios, under stateful invariant fuzzing
+at 256 runs x 8192 calls, and continuously against the live deployment.
+
+### The regression
+
+The exact state in this document is pinned in
+[`contracts/test/unit/ReservationNetting.t.sol`](../../contracts/test/unit/ReservationNetting.t.sol),
+which carries both formulas verbatim:
+
+| | reported |
+| --- | --- |
+| v1 formula | 80 |
+| independent worst case | 1,170 |
+| understatement | 1,090 |
+| v2 formula | 1,170 |
+
+`test_historicalState_v1Understates` asserts all three numbers.
+`test_historicalState_v2WouldHaveRefused` asserts that v1 saw room under the 500
+ceiling and admitted, and that v2 refuses.
+
+### Why the old suite did not catch it
+
+Two independent reasons, both fixed:
+
+1. The invariant asserted `domainRiskUsage <= CEILING` — the contract's own
+   number, against itself. An understatement made the assertion pass. That is
+   why the replacement is checked against a separately written implementation.
+2. The suite was vacuous in two ways at once. Its handler hard-coded BUY_YES, so
+   opposing reservations were structurally unreachable; and its fixture set every
+   market's `tradingStart` two days in the future, so every intent was refused
+   `MARKET_NOT_TRADING` and no order was ever admitted at all — in v1 either.
+
+### Live confirmation
+
+Rebuilt on the real venue against the replacement, with two independently-keyed
+agents resting opposite sides of one market:
+[`opposing-live.json`](opposing-live.json).
+
+| | |
+| --- | --- |
+| resting BUY_YES / BUY_NO | 240 / 90 |
+| 2.0.0 reported | 240 |
+| independent worst case | 240 |
+| v1 formula would have reported | 150 |
+| understatement avoided | 90 |
+
+An opposing-side intent over the ceiling was refused `DOMAIN_RISK_EXCEEDED`,
+which is the door v1 left open.

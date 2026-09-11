@@ -4,9 +4,18 @@
 
 **Unaudited. Testnet only. Do not fund with anything you are unwilling to lose.**
 
-The portfolio contract holds collateral and outcome tokens. It has 48 tests
-including invariants and live-fork adversarial cases, and it has been driven by
-independently-keyed agents against live Shannon. None of that is an audit.
+The portfolio contract holds collateral and outcome tokens. Version 2.0.0 has 90
+tests, including 9 stateful invariants, 16 named adversarial exposure scenarios,
+an independent reference implementation of both the exposure and the collateral
+model, and 10 live-fork cases against real Shannon state. It has been driven by
+independently-keyed agents against the live venue. None of that is an audit.
+
+**Version 1.0.0 is superseded and unsafe.** It understated worst-case
+directional exposure by netting opposing pending reservations. It was replaced,
+not upgraded — 2.0.0 is a separate deployment at new addresses. Do not fund
+`0x342d200aCF529905CC815D4ff9841053ea1c2D61`. The broken implementation, the
+failing on-chain state and the full decomposition are preserved unchanged in
+[engineering/03-superseded-unsafe-v1/](engineering/03-superseded-unsafe-v1/).
 
 ---
 
@@ -56,22 +65,45 @@ owner-callable; `releaseOrder(key)` is permissionless. Outcome tokens come out w
 > Uncertainty may **overstate** portfolio usage. It may never **understate**
 > maximum commitment.
 
-> [!WARNING]
-> **This invariant is currently violated.** Unfilled reservations on opposing
-> sides of one market cancel each other in `_directional`, so `domainRiskUsage`
-> can report far below true maximum commitment. Measured live: the contract
-> reported 820 where the worst case was 2,480, against a ceiling of 500, and 42
-> intents were admitted while over. The deployed contract still has this.
-> Full decomposition and the fix in
-> [evidence/production/CRITICAL-reservation-netting.md](evidence/production/CRITICAL-reservation-netting.md).
-> Everything below describes the intended design, which the rest of the system
-> does follow.
+Version 1.0.0 violated this. It computed one netted figure per market —
+`(balYES + yesLong − yesShort) − (balNO + noLong − noShort)` — which prices
+exactly one future: every resting order filling at once. That is the most
+NETTED reading available, not the most conservative one, and it let a pending
+BUY_YES cancel a pending BUY_NO even though either can fill without the other.
+Measured live: 80 reported against a true worst case of 1,170, under a 500
+ceiling.
+
+2.0.0 tracks the reachable INTERVAL instead of a point. Each resting order
+resolves independently, so placing one widens exactly one bound:
+
+```
+    b  = bal(YES) − bal(NO)                     realized, held right now
+    up = b + yesLong + yesShort                 BUY_YES fills / SELL_YES escrow returns
+    dn = b − noLong  − noShort                  BUY_NO  fills / SELL_NO  escrow returns
+
+    worst case = max(|up|, |dn|)
+```
+
+A SELL's outcome tokens are escrowed at placement — verified live, where each
+pool's outcome balance equalled its resting ask depth exactly — so a resting
+sell is already out of `bal`, and its exposure is the escrow coming back on
+cancel. Realized YES and NO still net, because a held complete set pays one unit
+either way and carries no direction. Pending orders never do.
+
+This is checked against a second implementation that shares no code with it and
+solves the problem a different way, by enumerating all sixteen combinations of
+fills ([`contracts/test/reference/ExposureOracle.sol`](contracts/test/reference/ExposureOracle.sol)).
+The property `accounted >= independent` is asserted in 16 named adversarial
+scenarios, under stateful invariant fuzzing, and continuously against the live
+deployment by [`scripts/risk-verifier.mjs`](scripts/risk-verifier.mjs).
 
 Every ambiguity resolves in that direction:
 
 - A reservation counts from the moment it is admitted, not when it fills.
 - A reservation whose fate is unknown stays counted until the venue proves it gone.
-- Domain exposure is the gross sum across markets, never netted.
+- Opposing pending orders in one market are never netted; the larger bound wins.
+- Domain exposure is the gross sum across markets, never netted. Two markets
+  sharing a cadence domain establish no payoff equivalence, so nothing offsets.
 - A market whose cadence matches no canonical window has no domain and is refused.
 - A domain with no configured ceiling refuses everything.
 
@@ -105,6 +137,31 @@ Measured: two transactions estimated at ~3.68M ran out of gas at 3.52M used. See
 
 **`MAX_MARKETS_PER_DOMAIN` is 48.** Beyond that a domain refuses new markets until
 settled ones are pruned. `pruneMarket` is permissionless.
+
+**A filled order is counted twice until it is reconciled.** DreamDEX's
+`getOrder` reverts identically whether an order filled or was cancelled, so when
+an outside taker fills a resting order the position arrives in the token balance
+while the reservation is still on the books. Both are counted until someone calls
+`releaseOrder`. This is the deliberate direction: the alternative is to guess the
+order is gone, and a wrong guess understates. It costs admission headroom, never
+safety, and reconciliation is permissionless so no privileged party has to be
+online. Measured live at 480 against a true 240, converging to 240 on release.
+
+**`committedCapital` is `capitalBase − freeCollateral`.** Collateral arriving
+from a profitable sell raises free collateral above the base, so measured
+committed capital floors at zero while orders are still open. That understates a
+policy BUDGET, and it cannot understate solvency: every buy is gated on
+`freeCollateral()` read from the token itself, so the portfolio can never
+authorise collateral it does not hold. The owner realigns it with
+`setCapitalBase`. Proven in
+[`contracts/test/unit/CollateralAccounting.t.sol`](contracts/test/unit/CollateralAccounting.t.sol).
+
+**The ceiling is an admission control, not a hard cap on exposure.** AIRSPACE
+guarantees that IT never admits an intent leaving a domain over its ceiling. It
+cannot guarantee usage stays under afterwards: an outside counterparty filling a
+resting order, or a cancelled sell returning its escrow, both move exposure with
+no admission involved, and no on-chain contract can prevent either. While over,
+every risk-adding intent is refused until reconciliation restores headroom.
 
 **Venue rules are the venue's.** A post-only order that would cross reverts at
 DreamDEX, and `previewIntent` cannot and does not predict it. That is

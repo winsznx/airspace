@@ -1,9 +1,9 @@
 {
   "chainId": 50312,
-  "factory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
-  "portfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "factory": "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
+  "portfolio": "0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C",
   "owner": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
-  "saltLabel": "airspace-live",
+  "saltLabel": "airspace-v2",
   "capitalBase": "6000000000",
   "freeCollateral": "6000000000",
   "committedCapital": "0",
@@ -15,8 +15,14 @@
       "markets": 2
     },
     {
-      "domain": "0xecad341196fc789ff26611e774c63542fba1a40e8bec10e253bcfe7fb7c5f784",
-      "cadenceSec": 900,
+      "domain": "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc",
+      "cadenceSec": 3600,
+      "creator": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
+      "markets": 2
+    },
+    {
+      "domain": "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900",
+      "cadenceSec": 14400,
       "creator": "0x94D963B6670AB96E78C8d0C46ca35D196d606EFE",
       "markets": 2
     }
@@ -35,5 +41,5 @@
       "address": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20"
     }
   ],
-  "configuredAt": "2026-08-28T10:30:37.031Z"
+  "configuredAt": "2026-08-28T16:07:11.792Z"
 }

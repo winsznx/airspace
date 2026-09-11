@@ -1,6 +1,10 @@
 # AIRSPACE
 
+**The portfolio control plane for autonomous prediction markets.**
+
 **One capital pool. Many trading agents. One shared risk envelope.**
+
+**[Open the live app →](https://airspace-api.timjosh507.workers.dev)** · Somnia Shannon · DreamDEX Event Contracts
 
 Your agents can each follow the rules and still break your portfolio. AIRSPACE
 lets independent DreamDEX Event Contract agents share one capital base on Somnia
@@ -43,14 +47,35 @@ That refusal is the product.
 
 | | |
 | --- | --- |
+| App | [airspace-api.timjosh507.workers.dev](https://airspace-api.timjosh507.workers.dev) |
 | Chain | Somnia Shannon (50312) |
-| Factory | [`0x342d200aCF529905CC815D4ff9841053ea1c2D61`](https://shannon-explorer.somnia.network/address/0x342d200aCF529905CC815D4ff9841053ea1c2D61) |
-| Implementation | [`0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0`](https://shannon-explorer.somnia.network/address/0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0) |
-| Campaign portfolio | [`0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc`](https://shannon-explorer.somnia.network/address/0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc) |
+| Factory | [`0xeD3D4552AFda96EfC5BF47c533E3302C655CB732`](https://shannon-explorer.somnia.network/address/0xeD3D4552AFda96EfC5BF47c533E3302C655CB732) |
+| Implementation | [`0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4`](https://shannon-explorer.somnia.network/address/0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4) |
+| Version | 2.0.0 — **CURRENT** |
+| Campaign portfolio | [`0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C`](https://shannon-explorer.somnia.network/address/0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C) |
 | Venue | DreamDEX Event Contracts, tUSDC |
 
 Evidence in [`evidence/production/`](evidence/production/): the canonical A/B/C
-proof, two live agent campaigns, and the hostile campaign.
+proof, the opposing-reservation proof, two live agent campaigns, and the hostile
+campaign.
+
+### The 1.0.0 deployment is superseded and unsafe
+
+| | |
+| --- | --- |
+| Factory | `0x342d200aCF529905CC815D4ff9841053ea1c2D61` |
+| Implementation | `0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0` |
+| Status | **SUPERSEDED / UNSAFE — do not fund** |
+
+1.0.0 collapsed each market to a single netted figure, so a pending BUY_YES
+cancelled a pending BUY_NO even though either can fill without the other. On a
+live portfolio it reported 80 contracts of usage against a true worst case of
+1,170, under a ceiling of 500.
+
+It was not upgraded. There is no proxy and no upgrade authority, which is the
+point: 2.0.0 is a separate deployment at new addresses, and the broken one is
+preserved unchanged, with its failing state and all its transaction evidence, in
+[`engineering/03-superseded-unsafe-v1/`](engineering/03-superseded-unsafe-v1/).
 
 ### What the agents actually did
 
@@ -69,8 +94,13 @@ rounds 15 and 16 all three were blocked at once, each by the other two.
 
 ### The hostile campaign
 
-Thirteen cases, thirteen passes, nothing skipped —
-[`evidence/production/adversarial.json`](evidence/production/adversarial.json):
+Thirteen cases, thirteen passes, nothing skipped — measured against the
+superseded 1.0.0 deployment and preserved at
+[`engineering/03-superseded-unsafe-v1/evidence/adversarial.json`](engineering/03-superseded-unsafe-v1/evidence/adversarial.json).
+The individual checks below (nonce replay, stale generation, owner recovery,
+and so on) are re-asserted directly against 2.0.0 in
+[`contracts/test/unit/Admission.t.sol`](contracts/test/unit/Admission.t.sol) and
+the [live fork suite](contracts/test/fork/Shannon.fork.t.sol):
 
 ```
 non-owner-withdraw           refused
@@ -118,12 +148,23 @@ Everything resolves toward one invariant:
 > Uncertainty may **overstate** portfolio usage. It may never **understate**
 > maximum commitment.
 
-**That invariant is currently broken, and the deployed contract has the defect.**
-Unfilled reservations on opposing sides of one market cancel in the exposure
-formula, so a ceiling did not bound worst-case exposure for a portfolio resting
-orders on both sides. It was found by building an independent verifier rather
-than by any test. The measurement, the causal chain, why 48 tests missed it, and
-the fix are in
+**Version 1.0.0 broke this invariant.** Unfilled reservations on opposing sides
+of one market cancelled in the exposure formula — a pending BUY_YES erased a
+pending BUY_NO even though either could fill without the other — so the ceiling
+did not bound worst-case exposure for a portfolio resting orders on both sides.
+It was found by building an independent verifier rather than by any test, and
+the deployed contract had the defect: 80 reported where the true worst case was
+1,170, against a ceiling of 500.
+
+**Version 2.0.0 is the fix, at a new deployment.** Worst-case exposure is now
+the widest point of the reachable interval, checked against a second,
+independently written implementation that enumerates every combination of
+fills. The old formula is pinned as a regression it must fail; the corrected
+one is proven not to understate under stateful fuzzing and replayed live
+against the real venue. Full account, including why the old test suite could
+not have caught this, in
+[evidence/production/REMEDIATION.md](evidence/production/REMEDIATION.md). The
+original finding, unedited, is preserved at
 [evidence/production/CRITICAL-reservation-netting.md](evidence/production/CRITICAL-reservation-netting.md).
 
 ---
@@ -131,7 +172,8 @@ the fix are in
 ## Repository
 
 ```
-contracts/       AirspacePortfolio + factory, 48 tests incl. invariants and live-fork
+contracts/       AirspacePortfolio + factory, 100 tests incl. 9 invariants, 16 adversarial
+                 scenarios, 2 independent reference implementations, and 10 live-fork
 packages/        types · protocol · risk · sdk · db      shared, no duplicated logic
 workers/
   api/           Hono + one Durable Object per portfolio; serves the web app
@@ -154,13 +196,34 @@ things that were killed. It is not rewritten to look tidier in hindsight.
 
 ```bash
 pnpm install
-pnpm -C contracts test          # 38 local tests
+pnpm -C contracts test          # 90 local tests, incl. 9 invariants at 256 runs x 8192 calls
 node scripts/refresh-fork-env.mjs && pnpm -C contracts test:fork   # 10 against live Shannon
 pnpm dev                        # api :8787 + web :5173
 ```
 
 Full setup, including the credentials you need and the ones you do not, in
 [SETUP.md](SETUP.md).
+
+---
+
+## Demo
+
+A deterministic, judge-runnable path — same command, same on-chain proof, no
+dependency on catching a market fill at the right moment:
+[evidence/production/CANONICAL-DEMO.md](evidence/production/CANONICAL-DEMO.md).
+
+```bash
+node scripts/live-proof.mjs
+```
+
+---
+
+## Engineering evidence
+
+The full record — the v1 safety failure, the independent exposure oracle, the
+remediation, and the live verification runs against v2 — lives in
+[evidence/](evidence/) and [engineering/](engineering/). Start at
+[evidence/production/REMEDIATION.md](evidence/production/REMEDIATION.md).
 
 ---
 
@@ -174,6 +237,8 @@ Full setup, including the credentials you need and the ones you do not, in
 | [SETUP.md](SETUP.md) | Clean-clone to running |
 | [CONTRIBUTIONS.md](CONTRIBUTIONS.md) | The upstream defect we found and fixed |
 | [PRD.md](PRD.md) · [DESIGN.md](DESIGN.md) | The canonical product and visual specification |
+| [evidence/production/REMEDIATION.md](evidence/production/REMEDIATION.md) | The v1 safety failure and its independently-verified fix |
+| [evidence/submission/RUBRIC_AUDIT.md](evidence/submission/RUBRIC_AUDIT.md) | Honest self-scoring against the hackathon rubric, limitations included |
 
 ---
 
@@ -185,4 +250,7 @@ stop several independent agents from collectively breaching a limit their owner
 set, and show exactly why when it does.
 
 It does not eliminate market risk, and it is **unaudited testnet software**. See
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](SECURITY.md) for the full trust model and
+[evidence/submission/RUBRIC_AUDIT.md](evidence/submission/RUBRIC_AUDIT.md) for
+the honest, itemised remaining gaps (mobile audit coverage, third-party bot
+integration, the upstream DreamDEX contribution).

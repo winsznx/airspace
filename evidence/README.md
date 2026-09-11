@@ -6,8 +6,38 @@ The raw artifacts sit beside the stage that produced them, under
 `engineering/*/evidence/`. This file explains what is safe to publish, what is
 never published, and which artifact backs which claim.
 
-Production evidence (deployment receipts, audit reports) will land in this
-directory once the production build begins. It is otherwise empty by design.
+Production evidence lives in [`evidence/production/`](production/) — start at
+[`REMEDIATION.md`](production/REMEDIATION.md) for the safety account, or
+[`production/README.md`](production/README.md) for the full index.
+
+## The engineering progression
+
+Each arrow below is a real transition this repository went through, not a
+tidied-up retrospective. `engineering/` is the immutable record of it.
+
+```
+v1 LOCK hypothesis (11/11, engineering/02-product-lock)
+  -> live campaign falsified the reservation invariant
+       (evidence/production/CRITICAL-reservation-netting.md)
+  -> the critical failure reproduced independently
+       (an off-chain verifier that trusts the contract for nothing)
+  -> the v2 economic model derived from DreamDEX's actual escrow semantics
+       (worst case as an INTERVAL, not a netted point — PRD 10.4a)
+  -> an exhaustive independent oracle
+       (contracts/test/reference/ExposureOracle.sol, enumerates every fill)
+  -> a 100-test safety suite
+       (9 invariants, 16 adversarial scenarios, 2 independent references)
+  -> a new deployment, not a patch
+       (no upgrade authority exists — engineering/03-superseded-unsafe-v1/)
+  -> the old exploit shape replayed successfully against 2.0.0
+       (evidence/production/opposing-live.json)
+  -> a long-running independent verifier, live, unattended
+       (evidence/production/risk-verification.json, long-campaign.json)
+```
+
+This is not a story we are hiding. A safety failure that was found, proven,
+fixed and re-verified this thoroughly is stronger evidence than a system that
+was never tested hard enough to find one.
 
 ---
 

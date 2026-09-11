@@ -1,58 +1,246 @@
 {
-  "finding": "CRITICAL: opposing unfilled reservations net against each other in _directional, so domainRiskUsage can understate maximum commitment.",
-  "status": "OPEN \u2014 not fixed, deployed contract still has it",
-  "portfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
-  "domain": "0xecad341196fc789ff26611e774c63542fba1a40e8bec10e253bcfe7fb7c5f784",
-  "ceilingContracts": 500,
-  "ceilingChangedDuringWindow": false,
-  "samples": [
-    {
-      "block": "473455000",
-      "ceiling": "500000000",
-      "reported": "820000000",
-      "worst": "2480000000",
-      "realized": "1000000000"
-    },
-    {
-      "block": "473458000",
-      "ceiling": "500000000",
-      "reported": "1000000000",
-      "worst": "2320000000",
-      "realized": "1000000000"
-    },
-    {
-      "block": "473461234",
-      "ceiling": "500000000",
-      "reported": "1120000000",
-      "worst": "1160000000",
-      "realized": "1000000000"
-    }
-  ],
-  "peakUnderstatementContracts": 1660,
-  "realizedPeakContracts": 1000,
-  "admissions": {
-    "onDomain": 67,
-    "whileTrueWorstCaseOverCeiling": 42,
-    "firstBreach": {
-      "block": 473413080,
-      "tx": "0x2f4edce9353003c42c89531a049e5de729121c2ac626f0a81e49ae8ec9cfd7f2",
-      "contractSaw": 530,
-      "trueWorstCase": 1280,
-      "realizedOnly": 620
-    }
+  "ranAt": "2026-08-28T16:41:15.030Z",
+  "portfolio": "0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C",
+  "deployment": {
+    "AirspacePortfolioFactory": "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
+    "AirspacePortfolio_implementation": "0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4"
   },
-  "whyTestsMissedIt": [
-    "invariant handler hard-codes kind: 0, so noLong is always zero and the opposing-reservation case is unreachable",
-    "invariant_domainUsageNeverExceedsCeiling asserts domainRiskUsage <= CEILING, which checks the number under test against itself and cannot detect an understatement"
+  "deploymentVersion": "2.0.0",
+  "head": "473622923",
+  "mode": "watch 90s for 270s",
+  "rounds": [
+    {
+      "round": 1,
+      "block": "473622980",
+      "at": "2026-08-28T16:41:17.487Z",
+      "samples": [
+        {
+          "domain": "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc",
+          "ceiling": "500000000",
+          "reportedUsage": "270000000",
+          "accountedTotal": "270000000",
+          "independentTotal": "270000000",
+          "backlogTotal": "0",
+          "capitalBase": "6000000000",
+          "freeColl": "5923500000",
+          "reservedColl": "9000000",
+          "heldColl": "5923500000",
+          "markets": [
+            {
+              "marketId": "0x000000000000000000000000000000000000000000000000000000000000c124",
+              "pool": "0xf50f7a2D4beaEf6c875F6155a88A1348917c7F9F",
+              "marketNonce": "134",
+              "balYes": "270000000",
+              "balNo": "0",
+              "contractCounters": {
+                "yesLong": "0",
+                "yesShort": "0",
+                "noLong": "90000000",
+                "noShort": "0"
+              },
+              "venueLive": {
+                "buyYes": "0",
+                "sellYes": "0",
+                "buyNo": "90000000",
+                "sellNo": "0"
+              },
+              "accounted": "270000000",
+              "independent": "270000000",
+              "backlog": "0",
+              "understates": false,
+              "orders": [
+                {
+                  "orderId": "239807672958224562827",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "147573952589676804800",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "221360928884515011265",
+                  "kind": 2,
+                  "placed": "90000000",
+                  "remaining": "90000000",
+                  "live": true
+                },
+                {
+                  "orderId": "184467440737095908040",
+                  "kind": 0,
+                  "placed": "30000000",
+                  "remaining": "0",
+                  "live": false
+                }
+              ]
+            }
+          ],
+          "block": "473622980",
+          "understates": false,
+          "overstatement": "0"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "block": "473623911",
+      "at": "2026-08-28T16:42:51.222Z",
+      "samples": [
+        {
+          "domain": "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc",
+          "ceiling": "500000000",
+          "reportedUsage": "270000000",
+          "accountedTotal": "270000000",
+          "independentTotal": "270000000",
+          "backlogTotal": "0",
+          "capitalBase": "6000000000",
+          "freeColl": "5923500000",
+          "reservedColl": "9000000",
+          "heldColl": "5923500000",
+          "markets": [
+            {
+              "marketId": "0x000000000000000000000000000000000000000000000000000000000000c124",
+              "pool": "0xf50f7a2D4beaEf6c875F6155a88A1348917c7F9F",
+              "marketNonce": "134",
+              "balYes": "270000000",
+              "balNo": "0",
+              "contractCounters": {
+                "yesLong": "0",
+                "yesShort": "0",
+                "noLong": "90000000",
+                "noShort": "0"
+              },
+              "venueLive": {
+                "buyYes": "0",
+                "sellYes": "0",
+                "buyNo": "90000000",
+                "sellNo": "0"
+              },
+              "accounted": "270000000",
+              "independent": "270000000",
+              "backlog": "0",
+              "understates": false,
+              "orders": [
+                {
+                  "orderId": "239807672958224562827",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "147573952589676804800",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "221360928884515011265",
+                  "kind": 2,
+                  "placed": "90000000",
+                  "remaining": "90000000",
+                  "live": true
+                },
+                {
+                  "orderId": "184467440737095908040",
+                  "kind": 0,
+                  "placed": "30000000",
+                  "remaining": "0",
+                  "live": false
+                }
+              ]
+            }
+          ],
+          "block": "473623911",
+          "understates": false,
+          "overstatement": "0"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "block": "473624846",
+      "at": "2026-08-28T16:44:24.100Z",
+      "samples": [
+        {
+          "domain": "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc",
+          "ceiling": "500000000",
+          "reportedUsage": "270000000",
+          "accountedTotal": "270000000",
+          "independentTotal": "270000000",
+          "backlogTotal": "0",
+          "capitalBase": "6000000000",
+          "freeColl": "5923500000",
+          "reservedColl": "9000000",
+          "heldColl": "5923500000",
+          "markets": [
+            {
+              "marketId": "0x000000000000000000000000000000000000000000000000000000000000c124",
+              "pool": "0xf50f7a2D4beaEf6c875F6155a88A1348917c7F9F",
+              "marketNonce": "134",
+              "balYes": "270000000",
+              "balNo": "0",
+              "contractCounters": {
+                "yesLong": "0",
+                "yesShort": "0",
+                "noLong": "90000000",
+                "noShort": "0"
+              },
+              "venueLive": {
+                "buyYes": "0",
+                "sellYes": "0",
+                "buyNo": "90000000",
+                "sellNo": "0"
+              },
+              "accounted": "270000000",
+              "independent": "270000000",
+              "backlog": "0",
+              "understates": false,
+              "orders": [
+                {
+                  "orderId": "239807672958224562827",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "147573952589676804800",
+                  "kind": 0,
+                  "placed": "120000000",
+                  "remaining": "0",
+                  "live": false
+                },
+                {
+                  "orderId": "221360928884515011265",
+                  "kind": 2,
+                  "placed": "90000000",
+                  "remaining": "90000000",
+                  "live": true
+                },
+                {
+                  "orderId": "184467440737095908040",
+                  "kind": 0,
+                  "placed": "30000000",
+                  "remaining": "0",
+                  "live": false
+                }
+              ]
+            }
+          ],
+          "block": "473624846",
+          "understates": false,
+          "overstatement": "0"
+        }
+      ]
+    }
   ],
-  "notImplicated": [
-    "owner recovery",
-    "agents cannot move capital",
-    "reconciliation liveness (verified, converges)"
-  ],
-  "unverified": [
-    "collateral accounting: committedCapital / reservedCollateral / freeCollateral"
-  ],
-  "verifier": "scripts/risk-verifier.mjs",
-  "writeup": "evidence/production/CRITICAL-reservation-netting.md"
+  "criticalFindings": [],
+  "verdict": "SAFE — accounted worst case never fell below the independent reference"
 }

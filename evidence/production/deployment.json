@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-28T11:41:43.986253Z",
+  "recordedAt": "2026-08-28T16:30:00Z",
   "chain": {
     "name": "Somnia Shannon",
     "chainId": 50312,
@@ -7,12 +7,15 @@
     "explorer": "https://shannon-explorer.somnia.network"
   },
   "contracts": {
-    "factory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
-    "implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0",
-    "runtimeBytes": 23689,
-    "eip170MarginBytes": 887
+    "factory": "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
+    "implementation": "0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4",
+    "runtimeBytes": 23918,
+    "eip170MarginBytes": 658,
+    "deployedAtBlock": 473593665,
+    "implementationTx": "0x2dc3ff8770689ca442c9f98e83fe7579c1763046e918eda7d0783e77e8eb0d17",
+    "factoryTx": "0x7b8c66c2b018ec6f6c895774110d899c07b36313bd8208652b6abd34d0d8b4b5"
   },
-  "campaignPortfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+  "campaignPortfolio": "0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C",
   "cloudflare": {
     "accountId": "eb94a234b390bb8da04babac718d6c92",
     "workers": {
@@ -110,5 +113,17 @@
     ],
     "note": "Projections only. The anon key is public by design and RLS-scoped; the service-role key exists solely as a Worker secret."
   },
-  "secretsNote": "No credential value appears in this file or anywhere in the repository. Only names and public identifiers."
+  "secretsNote": "No credential value appears in this file or anywhere in the repository. Only names and public identifiers.",
+  "version": "2.0.0",
+  "status": "CURRENT",
+  "workersRedeployedAt": "2026-09-02",
+  "workersRedeployNote": "All six Workers redeployed with the v2 safety hardening: the AIRSPACE_FACTORY guard that fails loud against a superseded implementation, the corrected ERC-6909 balance read in the indexer's position sync, and the new /api/portfolios/:address/reconciliation endpoint.",
+  "supersededDeployment": {
+    "version": "1.0.0",
+    "status": "SUPERSEDED / UNSAFE \u2014 do not fund",
+    "factory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
+    "implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0",
+    "campaignPortfolio": "0x2839EA7138c1cB783272041D55Ed6e9e29f2D4Bc",
+    "reason": "Netted opposing pending reservations, understating worst-case directional exposure. Not upgraded: there is no upgrade authority. Preserved in engineering/03-superseded-unsafe-v1/."
+  }
 }

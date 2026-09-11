@@ -509,25 +509,79 @@ This is not automatically equal to directional risk.
 
 ## 10.4 `marketDirectionalExposure`
 
-Within one binary market, directional exposure is derived from the imbalance between owned YES and NO outcome quantities.
-
-Conceptually:
+**REALIZED ONLY.** The imbalance between YES and NO outcome quantities the
+portfolio actually holds right now, from ERC-6909 balances. No reservation of
+any kind is included.
 
 ```text
-marketDirectionalExposure = abs(netYES - netNO)
+marketDirectionalExposure = balYES - balNO           (0 once settled)
 ```
 
-A complete YES+NO set has zero directional outcome exposure inside that market.
+A complete YES+NO set has zero directional outcome exposure inside that
+market. This quantity is informational — reported for humans and indexers —
+and admission must never gate on it directly. It is not the quantity a domain
+ceiling is charged against; see 10.4a.
 
 Do not net across unrelated markets merely because they share a domain.
 
+## 10.4a `marketWorstCaseExposure`
+
+**THE QUANTITY ADMISSION GATES ON.** The widest point of the INTERVAL of
+directional positions this market can still reach, given that every resting
+order resolves independently — it may fill, be cancelled, or expire, and
+nothing may assume otherwise.
+
+```text
+b  = balYES - balNO
+up = b + yesLong + yesShort      -- BUY_YES fills, or SELL_YES's escrow returns
+dn = b - noLong  - noShort       -- BUY_NO  fills, or SELL_NO's  escrow returns
+
+marketWorstCaseExposure = max(abs(up), abs(dn))
+```
+
+`yesShort`/`noShort` land on the bound that GROWS if the order does NOT fill,
+not the one that shrinks if it does — because a SELL escrows its outcome
+tokens at placement (verified against the live venue: a pool's outcome-token
+balance equals its resting ask depth exactly), so cancelling it returns those
+tokens to the realized balance.
+
+**A resting BUY_YES and a resting BUY_NO on the same market must NEVER be
+netted against each other**, even though a naive `netYES - netNO` computed
+over reservation-inclusive quantities would appear to net them. Either can
+fill without the other; assuming they resolve together was the exact defect
+in AIRSPACE 1.0.0, which reported a live worst case of 1,170 as 80 under a
+ceiling of 500. See `evidence/production/REMEDIATION.md`. The bound above is
+the corrected, tight replacement — proven equal to an independent
+implementation that enumerates every combination of fills rather than
+evaluating a closed form (`contracts/test/reference/ExposureOracle.sol`).
+
+A settled market contributes zero: its position is a fixed claim, not a bet.
+
 ## 10.5 `domainRiskUsage`
 
-A conservative domain-level quantity charged against the owner's ceiling.
+The GROSS sum of `marketWorstCaseExposure` over every tracked, unsettled
+market in the domain — never netted across markets, and never computed from
+`marketDirectionalExposure` (10.4), which omits reservations entirely and
+would understate.
 
-It must include enough reservation and position state that AIRSPACE cannot admit an order whose later fill would push the portfolio above the domain ceiling.
+```text
+domainRiskUsage = Σ marketWorstCaseExposure(m)   for m in domain.markets
+```
 
-Where exact risk cannot be proven, overstatement is allowed and preferred to unsafe understatement.
+Charged against the owner's ceiling. AIRSPACE cannot admit an order whose
+later fill would push the portfolio above the domain ceiling.
+
+Where exact risk cannot be proven — most visibly, a filled or cancelled
+reservation the venue has not yet confirmed gone, since `getOrder` reverts
+identically for both — overstatement is allowed and preferred to unsafe
+understatement. This is bounded and self-clearing: `releaseOrder` is
+permissionless, and the overstatement it carries converges to zero the moment
+it runs. It is a claim on ADMISSION headroom, never a claim that exposure
+cannot move at all: an outside fill or a cancelled sell's returning escrow
+both change `domainRiskUsage` with no admission involved, because neither is
+preventable by a contract that does not control the venue. What AIRSPACE
+guarantees is narrower and load-bearing: it never ADMITS an intent that would
+leave a domain over its ceiling.
 
 ## 10.6 `globalRiskUsage`
 

@@ -1,0 +1,118 @@
+{
+  "chainId": 50312,
+  "startedAt": "2026-08-28T16:10:12.339Z",
+  "portfolio": "0x637b05C8aa242325bCD2Bb91752810cCE7afEf1C",
+  "deployment": {
+    "AirspacePortfolioFactory": "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
+    "AirspacePortfolio_implementation": "0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4"
+  },
+  "deploymentVersion": "2.0.0",
+  "actors": {
+    "owner": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
+    "agentA": "0x551051f987b011329F29E8c069D8cb6ff2C2b084",
+    "agentB": "0x78D4bdCbAAb1b9c05c9c3c23C6C39fd34064D4cE",
+    "agentC": "0xe9685258CF6dcb54aBDDC1550A0fa23703527C20"
+  },
+  "steps": [
+    {
+      "name": "00-market",
+      "id": "0x000000000000000000000000000000000000000000000000000000000000c124",
+      "pool": "0xf50f7a2D4beaEf6c875F6155a88A1348917c7F9F",
+      "domain": "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc",
+      "nonce": "134",
+      "expNs": "1787936400000000000",
+      "cadence": 3600,
+      "secondsLeft": 2985,
+      "note": "one live market in a domain this portfolio already has a policy for"
+    },
+    {
+      "name": "01-buyYes",
+      "balYes": "0",
+      "balNo": "0",
+      "yesLong": "240000000",
+      "yesShort": "0",
+      "noLong": "0",
+      "noShort": "0",
+      "accounted": "240000000",
+      "independent": "240000000",
+      "v1WouldHaveSaid": "240000000",
+      "domainUsage": "240000000",
+      "ceiling": "500000000"
+    },
+    {
+      "name": "02-opposingBuysResting",
+      "balYes": "0",
+      "balNo": "0",
+      "yesLong": "240000000",
+      "yesShort": "0",
+      "noLong": "90000000",
+      "noShort": "0",
+      "accounted": "240000000",
+      "independent": "240000000",
+      "v1WouldHaveSaid": "150000000",
+      "domainUsage": "240000000",
+      "ceiling": "500000000",
+      "understatementAvoided": "90000000",
+      "note": "two INDEPENDENT agents, opposite sides, one market, both orders resting"
+    },
+    {
+      "name": "03-ceilingBindsBothSides",
+      "ceiling": "240000000",
+      "sameSideRefusal": "DOMAIN_RISK_EXCEEDED",
+      "oppositeSideRefusal": "DOMAIN_RISK_EXCEEDED",
+      "note": "an opposing order is not a way around the envelope: it widens the other bound"
+    },
+    {
+      "name": "04-concurrentAdmissionRace",
+      "headroomOffered": "40000000",
+      "eachAgentWanted": "30000000",
+      "firstAdmitted": "0x163ff5b77eae93cc7eeac9e62178d6811516d3c2c4a94fec1dcbd671a908b847",
+      "secondOutcome": "DOMAIN_RISK_EXCEEDED",
+      "domainUsageAfter": "270000000",
+      "ceiling": "280000000",
+      "balYes": "0",
+      "balNo": "0",
+      "yesLong": "270000000",
+      "yesShort": "0",
+      "noLong": "90000000",
+      "noShort": "0",
+      "accounted": "270000000",
+      "independent": "270000000",
+      "v1WouldHaveSaid": "180000000"
+    },
+    {
+      "name": "05-finalState",
+      "domainUsage": "270000000",
+      "ordersAdmitted": [
+        {
+          "orderId": "147573952589676804800",
+          "kind": 0,
+          "qty": "120000000"
+        },
+        {
+          "orderId": "221360928884515011265",
+          "kind": 2,
+          "qty": "90000000"
+        },
+        {
+          "orderId": "184467440737095908040",
+          "kind": 0,
+          "qty": "30000000"
+        }
+      ],
+      "balYes": "0",
+      "balNo": "0",
+      "yesLong": "270000000",
+      "yesShort": "0",
+      "noLong": "90000000",
+      "noShort": "0",
+      "accounted": "270000000",
+      "independent": "270000000",
+      "v1WouldHaveSaid": "180000000",
+      "note": "final reading; `v1WouldHaveSaid` is what the superseded deployment would have reported for this exact state"
+    }
+  ],
+  "finishedAt": "2026-08-28T16:10:35.186Z",
+  "failures": 0,
+  "verdict": "PASS"
+}

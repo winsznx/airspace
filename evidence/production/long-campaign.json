@@ -1,0 +1,42 @@
+{
+  "startedAt": "2026-09-02T18:59:33.826Z",
+  "targetHours": 3,
+  "rounds": 35,
+  "intentsProposed": 177,
+  "admitted": 43,
+  "refusedByLocalPolicy": 12,
+  "refusedByPortfolioPolicy": 25,
+  "refusedOther": 97,
+  "releasesCompleted": 30,
+  "generationsCrossed": 0,
+  "maxIndependentWorstCase": {
+    "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc": "500000000",
+    "0xb5900073f34dd461c1b743d2d0ef4e0a9577e4cd685117308a557d8c18bf8fb7": "94000000",
+    "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900": "200000000"
+  },
+  "maxAccountedUsage": {
+    "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc": "522000000",
+    "0xb5900073f34dd461c1b743d2d0ef4e0a9577e4cd685117308a557d8c18bf8fb7": "176000000",
+    "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900": "200000000"
+  },
+  "maxOverstatement": {
+    "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc": "86000000",
+    "0xb5900073f34dd461c1b743d2d0ef4e0a9577e4cd685117308a557d8c18bf8fb7": "82000000",
+    "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900": "64000000"
+  },
+  "maxPendingBacklog": {
+    "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc": "292000000",
+    "0xb5900073f34dd461c1b743d2d0ef4e0a9577e4cd685117308a557d8c18bf8fb7": "82000000",
+    "0xdc493f0f81932a6e471efcad80e75a0a2620166eb9dacf398d99a62fe7a26900": "75000000"
+  },
+  "backlogSince": {
+    "0x26cae3367750f143ba311e4fea97e152283edabcb80d500f17ce049ce3332ebc": 1788375764703
+  },
+  "longestReconciliationDelaySec": 4044,
+  "rpcFailovers": 0,
+  "workerErrors": 0,
+  "criticalFindings": [],
+  "elapsedSec": 10956,
+  "finishedAt": "2026-09-02T22:02:09.942Z",
+  "verdict": "SAFE — independent worst-case exposure never exceeded the policy ceiling due to AIRSPACE admission"
+}
