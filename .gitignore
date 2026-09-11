@@ -23,7 +23,7 @@ service-role*
 # Dependencies
 # ---------------------------------------------------------------------------
 node_modules/
-lib/
+/lib/
 
 # ---------------------------------------------------------------------------
 # Build output and caches
@@ -70,3 +70,8 @@ contracts/.env*
 .dev.vars.*
 !.dev.vars.example
 .wrangler/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/

@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "One capital pool. Many trading agents. One shared risk envelope.",
+  "license": "MIT",
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=20"
