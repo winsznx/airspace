@@ -7,7 +7,7 @@ number far **below** the portfolio's true maximum commitment, and the live
 campaign admitted 42 intents while it was doing so.
 
 This was found by building an independent verifier
-([`scripts/risk-verifier.mjs`](../../scripts/risk-verifier.mjs)) that
+([`scripts/risk-verifier.mjs`](../../../scripts/risk-verifier.mjs)) that
 reconstructs exposure from ERC-6909 balances and the DreamDEX order book rather
 than trusting the contract's own number.
 

@@ -45,3 +45,22 @@ and the evidence only means anything if the contract beside it is unchanged.
 
 Addresses in `evidence/deployment-v1.json` are **SUPERSEDED / UNSAFE**. Do not
 fund them. See the repository root for the current deployment.
+
+## The replacement
+
+| | |
+| --- | --- |
+| Factory | `0xeD3D4552AFda96EfC5BF47c533E3302C655CB732` |
+| Implementation | `0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4` |
+| Version | 2.0.0, deployed at block 473593665 |
+
+The same failing state, replayed against both implementations, is pinned as a
+regression in `contracts/test/unit/ReservationNetting.t.sol`: the old formula
+reports 80 where the independent worst case is 1,170, and the test asserts that
+understatement of 1,090 explicitly. The new formula reports 1,170 and refuses.
+
+The shape was then rebuilt on the live venue against the replacement, with two
+independently-keyed agents resting a BUY_YES and a BUY_NO on one market:
+`evidence/production/opposing-live.json`. The replacement reported 240 where
+v1's formula would have reported 150, and refused an opposing-side intent that
+v1 would have admitted.
