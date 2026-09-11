@@ -64,7 +64,7 @@ import {Cadence} from "./libraries/Cadence.sol";
 contract AirspacePortfolio {
     using Cadence for uint64;
 
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "2.0.0";
 
     // ----------------------------------------------------------------- errors
     error AlreadyInitialized();
@@ -285,40 +285,69 @@ contract AirspacePortfolio {
         return capitalBase > free ? capitalBase - free : 0;
     }
 
-    /// @notice Net outcome exposure of ONE market, in contract units.
-    /// @dev `netYes - netNo`, each leg being the realized ERC-6909 balance plus
-    ///      open buy reservations minus open sell reservations. Within one market
-    ///      a matched YES+NO pair is a complete set — worth exactly one collateral
-    ///      unit at settlement regardless of outcome — so it carries zero
-    ///      directional exposure and correctly nets to zero. A settled market
-    ///      returns 0: its position is a fixed claim, not a bet.
+    /// @notice Realized directional position: what the portfolio holds RIGHT NOW.
+    /// @dev Escrowed sell orders are already excluded — the venue custodies those
+    ///      tokens while the ask rests (verified live: a pool's outcome balance
+    ///      equals its resting ask depth). Reported for humans and indexers.
+    ///      ADMISSION DOES NOT GATE ON THIS. See `marketWorstCaseExposure`.
     function marketDirectionalExposure(bytes32 marketId) public view returns (int128) {
         MarketState storage m = marketState[marketId];
         if (!m.tracked || m.settled) return 0;
-        return _directional(m);
+        return _realized(m);
     }
 
-    function _directional(MarketState storage m) internal view returns (int128) {
+    /// @dev Realized only. Opposing REALIZED balances legitimately net: a held
+    ///      complete set pays exactly one unit whichever way the market resolves,
+    ///      so it carries no directional risk.
+    function _realized(MarketState storage m) internal view returns (int128) {
         uint256 yesId = _outcomeId(m.pool, m.marketNonce, 0);
-        int256 yes = int256(outcomeToken.balanceOf(address(this), yesId)) + int256(uint256(m.yesLong))
-            - int256(uint256(m.yesShort));
-        int256 no = int256(outcomeToken.balanceOf(address(this), yesId + 1)) + int256(uint256(m.noLong))
-            - int256(uint256(m.noShort));
-        return int128(yes - no);
+        return int128(
+            int256(outcomeToken.balanceOf(address(this), yesId))
+                - int256(outcomeToken.balanceOf(address(this), yesId + 1))
+        );
     }
 
-    /// @notice Domain risk usage: the sum of ABSOLUTE directional exposure over
-    ///         the domain's tracked markets.
+    /// @notice The reachable bounds on this market's directional position.
+    /// @dev Each resting order resolves INDEPENDENTLY — filled, cancelled or
+    ///      expired — so they must never be netted against one another. v1
+    ///      netted them and understated true commitment by up to 1,660 contracts
+    ///      on a 500 ceiling; see engineering/03-superseded-unsafe-v1.
+    ///
+    ///      With `b` the realized position and sells already escrowed away:
+    ///        BUY_YES  fills  -> +q, cancels -> 0
+    ///        SELL_YES cancels-> +q (tokens return), fills -> 0
+    ///        BUY_NO   fills  -> -q, cancels -> 0
+    ///        SELL_NO  cancels-> -q (tokens return), fills -> 0
+    ///      so every reachable position lies in [dn, up], and both endpoints are
+    ///      individually reachable.
+    function _bounds(MarketState storage m) internal view returns (int128 up, int128 dn) {
+        int256 b = int256(_realized(m));
+        up = int128(b + int256(uint256(m.yesLong)) + int256(uint256(m.yesShort)));
+        dn = int128(b - int256(uint256(m.noLong)) - int256(uint256(m.noShort)));
+    }
+
+    /// @notice Worst-case directional exposure this market can independently reach.
+    function marketWorstCaseExposure(bytes32 marketId) public view returns (uint128) {
+        MarketState storage m = marketState[marketId];
+        if (!m.tracked || m.settled) return 0;
+        (int128 up, int128 dn) = _bounds(m);
+        uint128 a = _abs(up);
+        uint128 c = _abs(dn);
+        return a > c ? a : c;
+    }
+
+    /// @notice Domain risk usage: the sum of independently-established per-market
+    ///         worst cases.
     /// @dev Gross, never netted across markets. Two markets in one cadence domain
     ///      are different questions resolving at different times against different
-    ///      reference prices — and the domain does not even establish that they
-    ///      share an underlying. Netting would understate; summing absolutes can
-    ///      only overstate, which is the safe direction.
+    ///      reference prices, and the domain does not even establish that they
+    ///      share an underlying. Nothing here proves a payoff equivalence between
+    ///      them, so nothing here may net them.
     function domainRiskUsage(bytes32 domain) public view returns (uint128 usage) {
         bytes32[] storage ids = _domainMarkets[domain];
         uint256 n = ids.length;
         for (uint256 k; k < n; ++k) {
-            usage += _abs(marketDirectionalExposure(ids[k]));
+            usage += marketWorstCaseExposure(ids[k]);
         }
     }
 
@@ -326,7 +355,7 @@ contract AirspacePortfolio {
         bytes32[] storage ids = _domainMarkets[domain];
         uint256 len = ids.length;
         for (uint256 k; k < len; ++k) {
-            if (marketDirectionalExposure(ids[k]) != 0) ++n;
+            if (marketWorstCaseExposure(ids[k]) != 0) ++n;
         }
     }
 
@@ -576,22 +605,29 @@ contract AirspacePortfolio {
         e.domainUsageBefore = domainRiskUsage(e.domain);
         e.domainCeiling = dp.maxDomainRiskUsage;
 
-        // Project the FULL potential exposure, as though the order fills
-        // completely. A resting order that has not filled still carries the risk
-        // it will create when it does, so it occupies the ceiling from admission.
+        // Project into the BOUNDS, never into a single netted figure.
+        //
+        // Placing an order widens exactly one side of the reachable interval,
+        // because a sell's tokens are escrowed at placement and returned only if
+        // it is cancelled:
+        //     BUY_YES  / SELL_NO   raise the upper bound
+        //     BUY_NO   / SELL_YES  lower the lower bound
+        // Netting a pending BUY_YES against a pending BUY_NO here is what made
+        // v1 unsafe: either can fill without the other.
+        (int128 up, int128 dn) = m.tracked ? _bounds(m) : (int128(0), int128(0));
         int128 q = int128(uint128(i.quantity));
-        int128 dYes;
-        int128 dNo;
-        if (i.kind == 0) dYes = q;
-        else if (i.kind == 1) dYes = -q;
-        else if (i.kind == 2) dNo = q;
-        else dNo = -q;
-        e.marketDirectionalAfter = e.marketDirectionalBefore + dYes - dNo;
+        if (i.kind == 0 || i.kind == 3) up += q;
+        else dn -= q;
+
+        uint128 a = _abs(up);
+        uint128 c = _abs(dn);
+        uint128 worstAfter = a > c ? a : c;
+        e.marketDirectionalAfter = a > c ? up : dn;
 
         // A market with no live state yet is not in the domain set, so its
         // contribution is added rather than swapped.
-        uint128 before_ = m.tracked ? _abs(e.marketDirectionalBefore) : 0;
-        e.domainUsageAfter = e.domainUsageBefore - before_ + _abs(e.marketDirectionalAfter);
+        uint128 before_ = m.tracked ? marketWorstCaseExposure(i.marketId) : 0;
+        e.domainUsageAfter = e.domainUsageBefore - before_ + worstAfter;
 
         if (e.domainUsageAfter > e.domainCeiling) {
             e.refusal = Refusal.DOMAIN_RISK_EXCEEDED;
@@ -640,8 +676,8 @@ contract AirspacePortfolio {
 
         if (dp.maxLiveMarkets != 0) {
             uint32 live = liveMarkets(e.domain);
-            if (!m.tracked || e.marketDirectionalBefore == 0) {
-                if (e.marketDirectionalAfter != 0) live += 1;
+            if (!m.tracked || marketWorstCaseExposure(i.marketId) == 0) {
+                if (worstAfter != 0) live += 1;
             }
             if (live > dp.maxLiveMarkets) {
                 e.refusal = Refusal.MAX_LIVE_MARKETS_EXCEEDED;
@@ -907,7 +943,7 @@ contract AirspacePortfolio {
         MarketState storage m = marketState[marketId];
         if (!m.tracked || m.settled) revert NothingToRelease();
 
-        int128 dir = _directional(m);
+        int128 dir = _realized(m);
         m.yesLong = 0;
         m.yesShort = 0;
         m.noLong = 0;

@@ -136,6 +136,11 @@ contract MockPool {
     uint16 public fillBps; // 0 = everything rests, 10000 = everything fills
     uint128 internal _nextId = 1;
     mapping(uint128 => Order) internal _orders;
+    /// @dev Which outcome each order is on, 0 = YES, 1 = NO. Needed on both
+    ///      sides: a cancelled SELL returns that outcome's escrow, and a
+    ///      cancelled BUY must be refunded at the price IT paid, which for a
+    ///      BUY_NO is `one - price` rather than `price`.
+    mapping(uint128 => uint8) internal _side;
 
     MockERC20 internal token;
     MockOutcome6909 internal oc;
@@ -201,9 +206,20 @@ contract MockPool {
             token.transferFrom(msg.sender, address(this), escrow);
             if (filled != 0) oc.mint(msg.sender, _outcomeId(isYes ? 0 : 1), filled);
         } else {
-            if (filled != 0) oc.burn(msg.sender, _outcomeId(isYes ? 0 : 1), filled);
+            // A SELL escrows OUTCOME TOKENS at PLACEMENT, not at fill.
+            //
+            // Verified against four live Shannon pools (scripts/escrow-probe.mjs):
+            // each pool's outcome balance equalled its resting ask depth
+            // exactly. The whole
+            // quantity leaves the seller now; the resting remainder comes back
+            // only if the order is cancelled or expires. Modelling this as a
+            // burn-on-fill — which this mock did while v1 was live — hides the
+            // entire sell-side of the accounting from every test.
+            oc.burn(msg.sender, _outcomeId(isYes ? 0 : 1), quantity);
+            if (filled != 0) token.mint(msg.sender, (unit * filled) / oneCollateral);
         }
 
+        _side[_nextId] = isYes ? 0 : 1;
         uint128 id = _nextId++;
         if (resting != 0) {
             _orders[id] = Order(id, isBuy, msg.sender, 0, price, quantity, resting, 0);
@@ -222,21 +238,35 @@ contract MockPool {
     function cancelOrder(uint128 id) external {
         Order memory o = _orders[id];
         if (o.quantityRemaining == 0) revert IncorrectOrder();
+        uint8 idx = _side[id];
         delete _orders[id];
+        delete _side[id];
         if (o.isBid) {
-            uint256 unit = o.price;
+            // Refund at the price this side actually paid.
+            uint256 unit = idx == 0 ? o.price : oneCollateral - o.price;
             token.transfer(o.owner, (unit * o.quantityRemaining + oneCollateral - 1) / oneCollateral);
+        } else {
+            // The unsold remainder of the escrow comes back to the seller.
+            oc.mint(o.owner, _outcomeId(idx), o.quantityRemaining);
         }
     }
 
-    /// @notice Simulate a fill that AIRSPACE did not initiate: the resting order
-    ///         is consumed by an incoming counterparty in another transaction.
+    /// @notice A fill AIRSPACE did not initiate: the resting order is consumed by
+    ///         an incoming counterparty in another transaction entirely.
+    /// @dev A filled BUY delivers outcome tokens. A filled SELL delivers nothing
+    ///      — those tokens left at placement — it delivers collateral.
     function externalFill(uint128 id, uint256 qty) external {
         Order storage o = _orders[id];
         require(o.quantityRemaining >= qty, "too much");
+        uint8 idx = _side[id];
+        uint256 unit = idx == 0 ? o.price : oneCollateral - o.price;
         o.quantityRemaining -= qty;
-        oc.mint(o.owner, _outcomeId(0), qty);
-        if (o.quantityRemaining == 0) delete _orders[id];
+        if (o.isBid) oc.mint(o.owner, _outcomeId(idx), qty);
+        else token.mint(o.owner, (unit * qty) / oneCollateral);
+        if (o.quantityRemaining == 0) {
+            delete _orders[id];
+            delete _side[id];
+        }
     }
 
     function cancelExpiredOrders(uint128[] calldata) external {}

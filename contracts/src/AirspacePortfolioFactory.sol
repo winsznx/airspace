@@ -26,7 +26,7 @@ contract AirspacePortfolioFactory {
     error AlreadyDeployed();
     error ZeroAddress();
 
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "2.0.0";
 
     /// @notice The immutable portfolio implementation every clone delegates to.
     address public immutable implementation;

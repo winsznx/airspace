@@ -1,17 +1,17 @@
 {
   "chainId": 50312,
   "network": "Somnia Shannon",
-  "version": "1.0.0",
-  "deployedAtBlock": 473372851,
-  "deployedAt": "2026-08-28T09:44:16Z",
+  "version": "2.0.0",
+  "deployedAtBlock": 473593665,
+  "deployedAt": "2026-08-28T00:00:00Z",
   "deployer": "0x4Bd0bf9821F23f822eb44B1F095594e2BbBC06Bc",
   "contracts": {
-    "AirspacePortfolioFactory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
-    "AirspacePortfolio_implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0"
+    "AirspacePortfolioFactory": "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
+    "AirspacePortfolio_implementation": "0xeB39A417eAC32f18a5C548afd9E442D2DEf416C4"
   },
   "transactions": {
-    "implementation": "0x5850a4d944b3b5dbee47f7eda798417a6c9cc3e44e96e0487ebbf1b85e1793eb",
-    "factory": "0xcecddcebc74b6c5e3ac3142d79e26af14307d7b79710fb9249bfec0ff7988e17"
+    "implementation": "0x2dc3ff8770689ca442c9f98e83fe7579c1763046e918eda7d0783e77e8eb0d17",
+    "factory": "0x7b8c66c2b018ec6f6c895774110d899c07b36313bd8208652b6abd34d0d8b4b5"
   },
   "dreamdex": {
     "binaryModule": "0x3ecC694Cef705358864a646142ac17A90E29e388",
@@ -21,5 +21,13 @@
     "collateralDecimals": 6
   },
   "explorer": "https://shannon-explorer.somnia.network",
-  "notes": "Implementation deployed separately from the factory: Somnia rejects a constructor that itself deploys a ~24KB contract, even though it simulates cleanly. See DECISIONS.md."
+  "notes": "Implementation deployed separately from the factory: Somnia rejects a constructor that itself deploys a ~24KB contract. Somnia also under-estimates deployment gas by roughly 11x \u2014 the implementation actually consumed 79,033,439 gas against a 6.79M estimate, so deployment requires --gas-estimate-multiplier 2000. See DECISIONS.md.",
+  "supersedes": {
+    "version": "1.0.0",
+    "status": "SUPERSEDED / UNSAFE \u2014 do not fund",
+    "AirspacePortfolioFactory": "0x342d200aCF529905CC815D4ff9841053ea1c2D61",
+    "AirspacePortfolio_implementation": "0x6DE57BC332AA93D3d6323509B3FDA4BCa4808Eb0",
+    "reason": "Netted opposing pending reservations into a single directional figure, understating worst-case exposure. See engineering/03-superseded-unsafe-v1/."
+  },
+  "status": "CURRENT"
 }
