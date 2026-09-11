@@ -64,31 +64,11 @@ jobs:
       - name: unit, fuzz and invariant tests
         run: forge test --root contracts --no-match-path '*fork*' -vv
 
-  fork:
-    name: contracts (live Shannon fork)
-    runs-on: ubuntu-latest
-    # A public RPC can be down or rate-limited, and that is not this repository
-    # being broken. The job runs and reports; it does not gate a merge.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
-      - name: forge-std, pinned (lib/ is not tracked, so nothing else provides it)
-        run: git clone --depth 1 --branch v1.16.2 https://github.com/foundry-rs/forge-std lib/forge-std
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-
-      - name: pin a live market pair
-        run: node scripts/refresh-fork-env.mjs
-
-      - name: fork tests
-        run: pnpm -C contracts test:fork
+  # The fork suite is not a CI job. It pins the chain tip and forks it, and the
+  # public Shannon RPC prunes state faster than the job can install and build,
+  # so it fails on "unable to load historical state" rather than on anything in
+  # this repository. Run it locally against an archive node:
+  #   node scripts/refresh-fork-env.mjs && pnpm -C contracts test:fork
 
   typescript:
     name: typescript
