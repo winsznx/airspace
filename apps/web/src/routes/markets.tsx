@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAgents, useList, useMarkets } from "../hooks/portfolio";
 import type { MarketStatus, MarketSummary, PositionRow, ReservationRow } from "../lib/api";
+import { IndexerHealthBanner } from "../components/indexer-health";
 import { AddressLink, Card, Empty, ErrorState, LoadingCard, Tag } from "../components/ui";
 import { contracts, countdown, marketLabel, probability, shortHash } from "../lib/format";
 
@@ -112,6 +113,13 @@ export function EventContractsPage() {
           creator, collateral and cadence, not from any single market id.
         </p>
       </div>
+
+      {/*
+        The market list itself is chain-derived. Which markets count as
+        "touched" is not: that comes from indexed reservations and positions,
+        so a stale indexer can quietly move a family out of the active section.
+      */}
+      <IndexerHealthBanner portfolio={address} />
 
       {touchedFamilies.length > 0 ? (
         <section className="stack" style={{ gap: 12 }}>

@@ -4,12 +4,14 @@ import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi, isAddress } from "viem";
 import { parseUnits } from "@airspace/risk";
 import { airspacePortfolioAbi } from "@airspace/sdk";
-import { usePortfolio } from "../hooks/portfolio";
+import { usePortfolio, useList } from "../hooks/portfolio";
 import { useWrite } from "../hooks/tx";
 import { TxStatus } from "../components/tx";
+import { CancelOrderButton } from "../components/order-actions";
 import { useIsWrongNetwork } from "../wallet";
-import { AddressLink, Card, ErrorState, LoadingCard, Notice, Stat } from "../components/ui";
-import { collateral } from "../lib/format";
+import { AddressLink, Card, Empty, ErrorState, LoadingCard, Notice, Stat, TableWrap, Tag } from "../components/ui";
+import { collateral, contracts, shortHash, timeAgo } from "../lib/format";
+import type { ReservationRow } from "../lib/api";
 
 /**
  * Owner recovery.
@@ -220,6 +222,8 @@ export function RecoveryPage() {
         </div>
       </Card>
 
+      <CancelRestingOrders portfolio={address} isOwner={isOwner} />
+
       <Card>
         <div className="stat-label" style={{ marginBottom: 10 }}>
           If this interface is unavailable
@@ -231,5 +235,92 @@ export function RecoveryPage() {
         </p>
       </Card>
     </div>
+  );
+}
+
+const OPEN_STATES = new Set(["RESERVED", "RESTING", "PARTIAL", "NEEDS_RECONCILIATION"]);
+
+/**
+ * Cancel resting orders.
+ *
+ * The stat above tells the owner that capital is held behind resting orders and
+ * that cancelling frees it. This is where they can actually do that, without
+ * leaving the page for a block explorer. The order list is a convenience read
+ * from the indexer; the pool and order id each cancel is sent with are read
+ * from the portfolio's own on-chain record, so a stale list can only omit a
+ * row, never mis-address a cancel.
+ */
+function CancelRestingOrders({ portfolio, isOwner }: { portfolio: string; isOwner: boolean }) {
+  const q = useList<ReservationRow>(portfolio, "reservations", { limit: 50 });
+  const rows = (q.data?.reservations ?? []).filter((r) => OPEN_STATES.has(r.state));
+
+  return (
+    <Card lg>
+      <div className="stack">
+        <div>
+          <div className="stat-label">Cancel resting orders</div>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Cancelling pulls the order off the venue. The collateral it was holding returns to the portfolio's
+            balance once the reservation is released, which anyone can trigger permissionlessly from the
+            exposure page.
+          </p>
+        </div>
+
+        {!isOwner ? (
+          <Notice kind="info" title="Connect the owner wallet to cancel">
+            Cancelling an order is owner-only. Everything listed here is readable by anyone.
+          </Notice>
+        ) : null}
+
+        {q.isLoading ? (
+          <LoadingCard rows={3} />
+        ) : rows.length === 0 ? (
+          <Empty title="No resting orders">
+            Nothing is currently held behind an open order. If the portfolio still reads a reserve above, it is
+            waiting on a release rather than on a cancel.
+          </Empty>
+        ) : (
+          <TableWrap>
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Market</th>
+                  <th className="num-cell">Open qty</th>
+                  <th className="num-cell">Reserved</th>
+                  <th>State</th>
+                  <th>Updated</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.order_key}>
+                    <td className="hash">{shortHash(r.order_key)}</td>
+                    <td className="hash">{shortHash(r.market_id)}</td>
+                    <td className="num-cell num">{contracts(r.qty_open)}</td>
+                    <td className="num-cell num">{collateral(r.collateral_reserved)}</td>
+                    <td>
+                      <Tag tone={r.state === "NEEDS_RECONCILIATION" ? "warn" : "accent"}>
+                        {r.state.replace(/_/g, " ").toLowerCase()}
+                      </Tag>
+                    </td>
+                    <td className="caption">{timeAgo(r.updated_at)}</td>
+                    <td>
+                      <CancelOrderButton
+                        portfolio={portfolio}
+                        orderKey={r.order_key}
+                        isOwner={isOwner}
+                        onDone={() => void q.refetch()}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+        )}
+      </div>
+    </Card>
   );
 }

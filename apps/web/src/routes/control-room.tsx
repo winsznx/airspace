@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { parseUnits } from "@airspace/risk";
+import { OrderType } from "@airspace/types";
+import { airspacePortfolioAbi } from "@airspace/sdk";
 import { api, type MarketSummary, type ReconciliationSummary, type ReservationRow, type SimulateResult } from "../lib/api";
 import {
   useAgents,
@@ -11,10 +13,13 @@ import {
   usePortfolioMath,
   useReconciliation,
 } from "../hooks/portfolio";
+import { useWrite } from "../hooks/tx";
+import { NetworkGuard, useIsWrongNetwork } from "../wallet";
 import { AGENT_COLORS, CeilingLine, type Segment } from "../components/ceiling";
 import { GateStack, Verdict } from "../components/gates";
 import { ReconciliationPanel } from "../components/reconciliation";
 import { DeploymentVerificationPanel } from "../components/deployment-verification";
+import { TxStatus } from "../components/tx";
 import {
   AddressLink,
   Card,
@@ -27,6 +32,15 @@ import {
   Tag,
 } from "../components/ui";
 import { cadenceLabel, collateral, contracts, countdown, marketLabel, pct, probability } from "../lib/format";
+
+const ZERO_BYTES32 = `0x${"00".repeat(32)}` as const;
+
+const ORDER_TYPE_LABEL: Record<number, string> = {
+  [OrderType.LIMIT]: "Limit",
+  [OrderType.FILL_OR_KILL]: "Fill or kill",
+  [OrderType.IMMEDIATE_OR_CANCEL]: "Immediate or cancel",
+  [OrderType.POST_ONLY]: "Post-only",
+};
 
 export function ControlRoom() {
   const { address = "" } = useParams();
@@ -204,6 +218,11 @@ export function ControlRoom() {
         agents={(agents.data?.agents ?? []).map((a) => ({ address: a.address, name: a.displayName, enabled: a.enabled }))}
         markets={markets.data?.markets ?? []}
         marketsLoading={markets.isLoading}
+        onExecuted={() => {
+          void portfolio.refetch();
+          void reservations.refetch();
+          void reconciliation.refetch();
+        }}
       />
 
       {/* --------------------------------------------------- technical evidence */}
@@ -344,6 +363,8 @@ function DomainCard({
           ceiling={ceiling}
           summary={reconciliation}
           portfolio={portfolio}
+          reservations={reservations.filter((r) => r.domain_hash === domain.domain)}
+          markets={inDomain}
           onReconciled={onReconciled}
         />
       </div>
@@ -410,26 +431,77 @@ function AdmissionPreview({
   agents,
   markets,
   marketsLoading,
+  onExecuted,
 }: {
   portfolio: string;
   agents: Array<{ address: string; name: string | null; enabled: boolean }>;
   markets: MarketSummary[];
   marketsLoading: boolean;
+  onExecuted: () => void;
 }) {
   const [agent, setAgent] = useState("");
   const [marketId, setMarketId] = useState("");
   const [kind, setKind] = useState(0);
+  const [orderType, setOrderType] = useState<number>(OrderType.POST_ONLY);
   const [price, setPrice] = useState("0.55");
   const [quantity, setQuantity] = useState("100");
   const [result, setResult] = useState<SimulateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const { address: wallet } = useAccount();
+  const wrongNetwork = useIsWrongNetwork();
+  const executeTx = useWrite();
+
   const market = markets.find((m) => m.marketId === marketId);
-  const selectedAgent = agent || agents[0]?.address || "";
+  // If the connected wallet is itself a known agent, default to it — someone
+  // who switched MetaMask accounts to their agent's key should not have to
+  // also re-paste that same address here before they can place an order.
+  // A manual pick (`agent`) always wins once the user has made one.
+  const walletIsAgent = Boolean(wallet) && agents.some((a) => a.address.toLowerCase() === wallet!.toLowerCase());
+  const selectedAgent = agent || (walletIsAgent ? wallet! : agents[0]?.address) || "";
   const selectedMarket = marketId || markets[0]?.marketId || "";
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(selectedAgent) && /^0x[0-9a-fA-F]{64}$/.test(selectedMarket);
+
+  const isConnectedAsAgent = Boolean(wallet) && wallet!.toLowerCase() === selectedAgent.toLowerCase();
+
+  const agentNonce = useReadContract({
+    address: portfolio as `0x${string}`,
+    abi: airspacePortfolioAbi,
+    functionName: "agentNonce",
+    args: [selectedAgent as `0x${string}`],
+    query: { enabled: valid && isConnectedAsAgent },
+  });
+
+  const execute = async () => {
+    if (!market) return;
+    // Re-read the nonce right before signing rather than trusting a value that
+    // may be several renders old — another tx from this same agent in between
+    // would make a stale nonce collide and revert as INTENT_REPLAYED.
+    const fresh = await agentNonce.refetch();
+    const current = (fresh.data as bigint | undefined) ?? 0n;
+    const hash = await executeTx.send({
+      address: portfolio as `0x${string}`,
+      abi: airspacePortfolioAbi,
+      functionName: "execute",
+      args: [
+        {
+          marketId: selectedMarket as `0x${string}`,
+          pool: market.pool as `0x${string}`,
+          marketNonce: BigInt(market.marketNonce),
+          kind,
+          price: parseUnits(price || "0", 6),
+          quantity: parseUnits(quantity || "0", 6),
+          expireTimestampNs: BigInt(market.live.marketExpiryNs),
+          orderType,
+          nonce: current + 1n,
+          strategyVersion: ZERO_BYTES32,
+        },
+      ],
+    });
+    if (hash) onExecuted();
+  };
 
   const run = async () => {
     setBusy(true);
@@ -465,24 +537,34 @@ function AdmissionPreview({
         </p>
       </div>
 
-      {agents.length === 0 ? (
-        <Empty title="Register an agent to preview an intent">
-          The preview evaluates a specific agent's policy alongside the shared envelope, so it needs an agent
-          to evaluate.
-        </Empty>
-      ) : (
-        <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1.1fr)", gap: 20 }}>
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1.1fr)", gap: 20 }}>
           <Card lg>
             <div className="stack">
               <label className="field">
                 <span className="field-label">Agent</span>
-                <select className="input" value={selectedAgent} onChange={(e) => setAgent(e.target.value)}>
-                  {agents.map((a) => (
-                    <option key={a.address} value={a.address}>
-                      {(a.name || a.address.slice(0, 10)) + (a.enabled ? "" : " (revoked)")}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  className="input"
+                  type="text"
+                  spellCheck={false}
+                  list="admission-preview-agents"
+                  placeholder="0x…"
+                  value={selectedAgent}
+                  onChange={(e) => setAgent(e.target.value.trim())}
+                />
+                {agents.length > 0 ? (
+                  <datalist id="admission-preview-agents">
+                    {agents.map((a) => (
+                      <option key={a.address} value={a.address}>
+                        {(a.name || a.address.slice(0, 10)) + (a.enabled ? "" : " (revoked)")}
+                      </option>
+                    ))}
+                  </datalist>
+                ) : null}
+                <span className="field-hint">
+                  {agents.length > 0
+                    ? "Any registered address — pick from the list or paste one."
+                    : "Paste the agent's address. previewIntent reads its policy straight from the contract, not from an index."}
+                </span>
               </label>
 
               <label className="field">
@@ -533,21 +615,38 @@ function AdmissionPreview({
                 </label>
               </div>
 
-              <label className="field">
-                <span className="field-label">Quantity (contracts)</span>
-                <input
-                  className="input"
-                  type="text"
-                  inputMode="decimal"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                />
-                {market ? (
+              <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label className="field">
+                  <span className="field-label">Quantity (contracts)</span>
+                  <input
+                    className="input"
+                    type="text"
+                    inputMode="decimal"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                  />
+                  {market ? (
+                    <span className="field-hint">
+                      lot {contracts(market.live.lotSize)} · minimum {contracts(market.live.minQuantity)}
+                    </span>
+                  ) : null}
+                </label>
+                <label className="field">
+                  <span className="field-label">Order type</span>
+                  <select className="input" value={orderType} onChange={(e) => setOrderType(Number(e.target.value))}>
+                    {Object.entries(ORDER_TYPE_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
                   <span className="field-hint">
-                    lot {contracts(market.live.lotSize)} · minimum {contracts(market.live.minQuantity)}
+                    {orderType === OrderType.POST_ONLY
+                      ? "Rests only — rejected if it would take liquidity immediately."
+                      : "Can fill immediately against the resting book."}
                   </span>
-                ) : null}
-              </label>
+                </label>
+              </div>
 
               <button className="btn btn-primary" disabled={!valid || busy} onClick={() => void run()}>
                 {busy ? (
@@ -607,12 +706,51 @@ function AdmissionPreview({
                   <GateStack gates={result.gates} />
 
                   <p className="caption">{result.advisory}</p>
+
+                  <div className="stack" style={{ gap: 8, borderTop: "1px solid var(--fog)", paddingTop: 16 }}>
+                    {!wallet ? (
+                      <Notice kind="info" title="Connect a wallet to place this order">
+                        Executing signs and sends the transaction from the agent's own address — the same
+                        address this preview evaluated.
+                      </Notice>
+                    ) : !isConnectedAsAgent ? (
+                      <Notice kind="warn" title="Connected wallet is not this agent">
+                        Only {selectedAgent.slice(0, 8)}… can sign this intent. Switch your wallet to that
+                        agent's account to place the order, or preview a different agent.
+                      </Notice>
+                    ) : (
+                      <>
+                        <NetworkGuard />
+                        <button
+                          className="btn btn-primary"
+                          disabled={executeTx.busy || wrongNetwork}
+                          onClick={() => void execute()}
+                        >
+                          {executeTx.busy ? (
+                            <>
+                              <span className="spinner" /> Placing order
+                            </>
+                          ) : result.decision.admitted ? (
+                            "Place order"
+                          ) : (
+                            "Place order anyway"
+                          )}
+                        </button>
+                      </>
+                    )}
+                    {!result.decision.admitted && isConnectedAsAgent ? (
+                      <p className="caption">
+                        The preview refused this intent. Submitting will re-check every gate on chain and is
+                        expected to revert with the same reason.
+                      </p>
+                    ) : null}
+                    <TxStatus state={executeTx} onDismiss={executeTx.reset} />
+                  </div>
                 </div>
               </Card>
             )}
           </div>
         </div>
-      )}
     </section>
   );
 }

@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { useAccount } from "wagmi";
 import { airspacePortfolioAbi } from "@airspace/sdk";
-import { api, type PositionRow, type ReservationRow } from "../lib/api";
-import { useAgents, useList } from "../hooks/portfolio";
+import type { PositionRow, ReservationRow } from "../lib/api";
+import { useAgents, useList, usePortfolio } from "../hooks/portfolio";
 import { useWrite } from "../hooks/tx";
 import { TxStatus } from "../components/tx";
+import { CancelOrderButton, RedeemButton } from "../components/order-actions";
+import { IndexerHealthBanner } from "../components/indexer-health";
 import { useIsWrongNetwork } from "../wallet";
 import { Card, Empty, ErrorState, LoadingCard, Notice, Pager, TableWrap, Tag, TableActions } from "../components/ui";
 import { collateral, contracts, marketLabel, shortHash, timeAgo } from "../lib/format";
@@ -23,6 +26,9 @@ const OPEN_STATES = new Set(["RESERVED", "RESTING", "PARTIAL", "NEEDS_RECONCILIA
 export function PositionsPage() {
   const { address = "" } = useParams();
   const [tab, setTab] = useState<"reservations" | "positions">("reservations");
+  const { address: wallet } = useAccount();
+  const portfolio = usePortfolio(address);
+  const isOwner = Boolean(wallet) && portfolio.data?.owner?.toLowerCase() === wallet?.toLowerCase();
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -32,6 +38,8 @@ export function PositionsPage() {
           What the portfolio holds and what it has set aside. Both count against the shared envelope.
         </p>
       </div>
+
+      <IndexerHealthBanner portfolio={address} />
 
       <div className="tabs" role="tablist">
         <button
@@ -52,14 +60,18 @@ export function PositionsPage() {
         </button>
       </div>
 
-      {tab === "reservations" ? <Reservations portfolio={address} /> : <Positions portfolio={address} />}
+      {tab === "reservations" ? (
+        <Reservations portfolio={address} isOwner={isOwner} />
+      ) : (
+        <Positions portfolio={address} isOwner={isOwner} />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function Reservations({ portfolio }: { portfolio: string }) {
+function Reservations({ portfolio, isOwner }: { portfolio: string; isOwner: boolean }) {
   const [offset, setOffset] = useState(0);
   const q = useList<ReservationRow>(portfolio, "reservations", { limit: 25, offset });
   const agents = useAgents(portfolio);
@@ -108,7 +120,14 @@ function Reservations({ portfolio }: { portfolio: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <ReservationRowView key={r.order_key} row={r} portfolio={portfolio} name={nameOf(r.agent_address)} onDone={() => void q.refetch()} />
+              <ReservationRowView
+                key={r.order_key}
+                row={r}
+                portfolio={portfolio}
+                name={nameOf(r.agent_address)}
+                isOwner={isOwner}
+                onDone={() => void q.refetch()}
+              />
             ))}
           </tbody>
         </table>
@@ -122,19 +141,24 @@ function ReservationRowView({
   row,
   portfolio,
   name,
+  isOwner,
   onDone,
 }: {
   row: ReservationRow;
   portfolio: string;
   name: string;
+  isOwner: boolean;
   onDone: () => void;
 }) {
   const tx = useWrite();
   const wrongNetwork = useIsWrongNetwork();
-  const [queued, setQueued] = useState<string | null>(null);
   const open = OPEN_STATES.has(row.state);
 
   const tone = row.state === "NEEDS_RECONCILIATION" ? "warn" : open ? "accent" : "neutral";
+
+  // Rows arrive already measured against the contract and the venue, so a
+  // reservation the contract could release right now says so itself.
+  const tracked = row.state === "NEEDS_RECONCILIATION";
 
   return (
     <>
@@ -153,7 +177,7 @@ function ReservationRowView({
             <TableActions>
               <button
                 className="btn btn-outline btn-sm"
-                disabled={tx.busy || wrongNetwork}
+                disabled={tx.busy || wrongNetwork || !tracked}
                 title="Ask the contract to re-read the venue and free anything that is gone"
                 onClick={async () => {
                   const h = await tx.send({
@@ -167,24 +191,7 @@ function ReservationRowView({
               >
                 {tx.busy ? "…" : "Release"}
               </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                title="Queue a background reconciliation instead of paying gas yourself"
-                onClick={async () => {
-                  try {
-                    const res = await api.requestReconcile({
-                      portfolio,
-                      orderKey: row.order_key,
-                      reason: "user-request",
-                    });
-                    setQueued(res.deduplicated ? "Already queued" : "Queued");
-                  } catch {
-                    setQueued("Could not queue");
-                  }
-                }}
-              >
-                {queued ?? "Queue"}
-              </button>
+              <CancelOrderButton portfolio={portfolio} orderKey={row.order_key} isOwner={isOwner} onDone={onDone} />
             </TableActions>
           ) : (
             <span className="dim">—</span>
@@ -204,7 +211,7 @@ function ReservationRowView({
 
 // ---------------------------------------------------------------------------
 
-function Positions({ portfolio }: { portfolio: string }) {
+function Positions({ portfolio, isOwner }: { portfolio: string; isOwner: boolean }) {
   const [offset, setOffset] = useState(0);
   const q = useList<PositionRow>(portfolio, "positions", { limit: 25, offset });
   const rows = q.data?.positions ?? [];
@@ -245,7 +252,13 @@ function Positions({ portfolio }: { portfolio: string }) {
           </thead>
           <tbody>
             {rows.map((p) => (
-              <PositionRowView key={p.market_id} row={p} portfolio={portfolio} onDone={() => void q.refetch()} />
+              <PositionRowView
+                key={p.market_id}
+                row={p}
+                portfolio={portfolio}
+                isOwner={isOwner}
+                onDone={() => void q.refetch()}
+              />
             ))}
           </tbody>
         </table>
@@ -258,10 +271,12 @@ function Positions({ portfolio }: { portfolio: string }) {
 function PositionRowView({
   row,
   portfolio,
+  isOwner,
   onDone,
 }: {
   row: PositionRow;
   portfolio: string;
+  isOwner: boolean;
   onDone: () => void;
 }) {
   const tx = useWrite();
@@ -288,22 +303,25 @@ function PositionRowView({
         <td className="caption">{timeAgo(row.updated_at)}</td>
         <td>
           {row.settled && !row.redeemed ? (
-            <button
-              className="btn btn-outline btn-sm"
-              disabled={tx.busy || wrongNetwork}
-              title="Free the capital this settled market still occupies"
-              onClick={async () => {
-                const h = await tx.send({
-                  address: portfolio as `0x${string}`,
-                  abi: airspacePortfolioAbi,
-                  functionName: "releaseSettled",
-                  args: [row.market_id as `0x${string}`],
-                });
-                if (h) onDone();
-              }}
-            >
-              {tx.busy ? "…" : "Release settled"}
-            </button>
+            <TableActions>
+              <button
+                className="btn btn-outline btn-sm"
+                disabled={tx.busy || wrongNetwork}
+                title="Free the capital this settled market still occupies"
+                onClick={async () => {
+                  const h = await tx.send({
+                    address: portfolio as `0x${string}`,
+                    abi: airspacePortfolioAbi,
+                    functionName: "releaseSettled",
+                    args: [row.market_id as `0x${string}`],
+                  });
+                  if (h) onDone();
+                }}
+              >
+                {tx.busy ? "…" : "Release settled"}
+              </button>
+              <RedeemButton portfolio={portfolio} marketId={row.market_id} isOwner={isOwner} onDone={onDone} />
+            </TableActions>
           ) : (
             <span className="dim">—</span>
           )}

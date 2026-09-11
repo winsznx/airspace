@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { REFUSAL_NAME } from "@airspace/types";
 import { api, type IntentRow } from "../lib/api";
 import { useAgents, useList } from "../hooks/portfolio";
+import { IndexerHealthBanner } from "../components/indexer-health";
 import {
   AddressLink,
   Card,
@@ -88,6 +89,8 @@ export function Activity() {
         </div>
       </div>
 
+      <IndexerHealthBanner portfolio={address} />
+
       {q.isLoading ? (
         <LoadingCard rows={6} />
       ) : q.isError ? (
@@ -162,8 +165,8 @@ export function Activity() {
 export function IntentDetail() {
   const { address = "", intentHash = "" } = useParams();
   const q = useQuery({
-    queryKey: ["receipt", intentHash],
-    queryFn: () => api.receipt(intentHash),
+    queryKey: ["receipt", address, intentHash],
+    queryFn: () => api.receipt(intentHash, address),
     retry: false,
   });
 

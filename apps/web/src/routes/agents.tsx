@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage } from "wagmi";
 import { isAddress, keccak256, toHex, zeroHash } from "viem";
 import { parseUnits } from "@airspace/risk";
 import { airspacePortfolioAbi } from "@airspace/sdk";
+import { api } from "../lib/api";
 import { useAgents, useList, usePortfolio } from "../hooks/portfolio";
 import { useWrite } from "../hooks/tx";
 import { TxStatus } from "../components/tx";
@@ -88,7 +89,11 @@ export function AgentsPage() {
     return m;
   }, [reservations.data, intents.data]);
 
+  const { signMessageAsync } = useSignMessage();
+  const [nameError, setNameError] = useState<string | null>(null);
+
   const submit = async () => {
+    setNameError(null);
     const hash = await tx.send({
       address: address as `0x${string}`,
       abi: airspacePortfolioAbi,
@@ -106,11 +111,33 @@ export function AgentsPage() {
         },
       ],
     });
-    if (hash) {
-      setForm(BLANK);
-      setOpen(false);
-      void agents.refetch();
+    if (!hash) return;
+
+    // The label is cosmetic and off-chain, so a rejected or failed signature
+    // here never rolls back the registration that already landed on chain —
+    // it only means the agent shows up unnamed until it is set again.
+    const name = form.name.trim();
+    if (name) {
+      try {
+        const timestamp = Date.now();
+        const message = [
+          "AIRSPACE",
+          "Set agent display name",
+          `Portfolio: ${address.toLowerCase()}`,
+          `Agent: ${form.address.toLowerCase()}`,
+          `Name: ${name}`,
+          `Timestamp: ${timestamp}`,
+        ].join("\n");
+        const signature = await signMessageAsync({ message });
+        await api.setAgentName(address, form.address, { name, signature, timestamp });
+      } catch (e) {
+        setNameError(e instanceof Error ? e.message : "Could not save the display name.");
+      }
     }
+
+    setForm(BLANK);
+    setOpen(false);
+    void agents.refetch();
   };
 
   return (
@@ -129,6 +156,12 @@ export function AgentsPage() {
           </button>
         ) : null}
       </div>
+
+      {nameError ? (
+        <Notice kind="warn" title="Agent registered, but the display name was not saved">
+          {nameError} The agent is live with its policy — you can set a name for it again from the list below.
+        </Notice>
+      ) : null}
 
       {!isOwner && wallet ? (
         <Notice kind="info" title="You are not the owner of this portfolio">
@@ -342,14 +375,83 @@ function AgentCard({
   const identity = strategyIdentity(agent.strategyId);
   const utilisation = agent.policy.maxCommitted !== "0" ? (Number(agent.committed) / Number(agent.policy.maxCommitted)) * 100 : 0;
 
+  const { signMessageAsync } = useSignMessage();
+  const [renaming, setRenaming] = useState(false);
+  const [nameInput, setNameInput] = useState(agent.displayName ?? "");
+  const [nameBusy, setNameBusy] = useState(false);
+  const [nameErr, setNameErr] = useState<string | null>(null);
+
+  const saveName = async () => {
+    setNameBusy(true);
+    setNameErr(null);
+    try {
+      const name = nameInput.trim();
+      const timestamp = Date.now();
+      const message = [
+        "AIRSPACE",
+        "Set agent display name",
+        `Portfolio: ${portfolio.toLowerCase()}`,
+        `Agent: ${agent.address.toLowerCase()}`,
+        `Name: ${name}`,
+        `Timestamp: ${timestamp}`,
+      ].join("\n");
+      const signature = await signMessageAsync({ message });
+      await api.setAgentName(portfolio, agent.address, { name, signature, timestamp });
+      setRenaming(false);
+      onChanged();
+    } catch (e) {
+      setNameErr(e instanceof Error ? e.message : "Could not save the display name.");
+    } finally {
+      setNameBusy(false);
+    }
+  };
+
   return (
     <Card className="agent-card">
       <div className="row-between" style={{ alignItems: "flex-start" }}>
         <div className="row" style={{ gap: 10 }}>
           <span className="agent-dot" style={{ background: color }} aria-hidden />
           <div className="stack" style={{ gap: 2 }}>
-            <span style={{ fontWeight: 500, color: "var(--carbon)" }}>{agent.displayName || identity.kind}</span>
+            {renaming ? (
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  className="input"
+                  style={{ height: 28, padding: "0 8px", fontSize: 13 }}
+                  autoFocus
+                  value={nameInput}
+                  placeholder={identity.kind}
+                  onChange={(e) => setNameInput(e.target.value.slice(0, 40))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveName();
+                    if (e.key === "Escape") setRenaming(false);
+                  }}
+                />
+                <button className="btn btn-primary btn-sm" disabled={nameBusy} onClick={() => void saveName()}>
+                  {nameBusy ? "…" : "Save"}
+                </button>
+                <button className="btn btn-ghost btn-sm" disabled={nameBusy} onClick={() => setRenaming(false)}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <span className="row" style={{ gap: 6 }}>
+                <span style={{ fontWeight: 500, color: "var(--carbon)" }}>{agent.displayName || identity.kind}</span>
+                {isOwner ? (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: "0 6px", height: 20, fontSize: 11 }}
+                    onClick={() => {
+                      setNameInput(agent.displayName ?? "");
+                      setRenaming(true);
+                    }}
+                  >
+                    Rename
+                  </button>
+                ) : null}
+              </span>
+            )}
             <span className="caption">{identity.kind}</span>
+            {nameErr ? <span className="field-error">{nameErr}</span> : null}
           </div>
         </div>
         {agent.enabled ? <Tag tone="pass">Active</Tag> : <Tag tone="neutral">Revoked</Tag>}

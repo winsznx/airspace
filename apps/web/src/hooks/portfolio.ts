@@ -137,6 +137,24 @@ export function useReconciliation(address: string | undefined, domains: string[]
   });
 }
 
+/**
+ * Can the activity, reservation and position lists be trusted right now?
+ * Answered from the chain: how much of the portfolio's history has been read,
+ * and whether the reservations it describes add up to what the contract says
+ * is reserved.
+ */
+export function useHistoryStatus(address?: string) {
+  return useQuery({
+    queryKey: ["history-status", address],
+    enabled: Boolean(address),
+    queryFn: () => api.historyStatus(address!),
+    staleTime: 10_000,
+    // Poll quickly while history is still loading so the lists fill in without a refresh.
+    refetchInterval: (query) => (query.state.data?.loading ? 3_000 : 30_000),
+    retry: false,
+  });
+}
+
 export function useList<T>(
   address: string | undefined,
   kind: "intents" | "receipts" | "reservations" | "positions",

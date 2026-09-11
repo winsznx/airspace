@@ -1,8 +1,12 @@
 /**
  * API client for the AIRSPACE worker.
  *
- * Read-only. Nothing here can change portfolio authority: every write is a
- * wallet-signed on-chain transaction sent directly from the browser.
+ * Read-only, with one deliberate exception: `setAgentName`. Nothing here can
+ * change portfolio AUTHORITY — every write that moves capital, admits a
+ * trade, or changes a policy is a wallet-signed on-chain transaction sent
+ * directly from the browser. A display name is cosmetic and never read by
+ * admission logic, so it is authorized the same way minus the gas: the owner
+ * signs a plain message instead of a transaction.
  */
 
 export class ApiError extends Error {
@@ -39,8 +43,6 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export interface ApiConfig {
   chainId: number;
   factory: string | null;
-  supabaseUrl: string;
-  supabaseAnonKey: string;
   explorer: string;
 }
 
@@ -125,7 +127,7 @@ export interface SimulateResult {
   advisory: string;
 }
 
-/** Projections. Every `numeric(78,0)` column arrives as a decimal string. */
+/** Every uint256 arrives as a decimal string. Nothing here is read from a database: it is decoded from the portfolio's own logs and re-measured against the contract. */
 export interface AgentSummary {
   address: string;
   displayName: string | null;
@@ -173,6 +175,8 @@ export interface ReservationRow {
   qty_open: string;
   collateral_reserved: string;
   state: string;
+  /** What a permissionless `releaseOrder` would free right now. */
+  releasable: string;
   source_block: number;
   updated_at: string;
 }
@@ -192,9 +196,10 @@ export interface PositionRow {
 /**
  * Reconciliation and headroom truth for one domain.
  *
- * `independentWorstCase` is computed by the API from indexed positions and
- * reservations, through a separate implementation from the contract's own
- * `domainRiskUsage()` — never by trusting that number back at itself.
+ * `independentWorstCase` is rebuilt by the API from the outcome token's own
+ * balances and the contract's own `orderRec` reservations, through a separate
+ * implementation from the contract's `domainRiskUsage()` — never by trusting
+ * that number back at itself.
  */
 export interface ReconciliationSummary {
   domain: string;
@@ -205,6 +210,26 @@ export interface ReconciliationSummary {
   marketsTracked: number;
   marketsCap: number;
   independentWorstCase: string;
+}
+
+/**
+ * Whether the activity, reservation and position views can be trusted right
+ * now — judged against the chain in two ways: has the portfolio's event history
+ * been read up to the head, and do the reservations it describes add up to the
+ * collateral the contract itself reports as reserved.
+ */
+export interface HistoryStatus {
+  stale: boolean;
+  /** True while the portfolio's history is still being read from the chain. */
+  loading: boolean;
+  reasons: string[];
+  chainHead: string;
+  scannedThrough: string;
+  behindBlocks: string;
+  onChainReservedCollateral: string;
+  /** Null while the history is still loading: a partial history proves nothing. */
+  explainedReservedCollateral: string | null;
+  openReservations: number | null;
 }
 
 export interface ReceiptRow {
@@ -275,6 +300,11 @@ export const api = {
 
   agents: (address: string) =>
     req<{ agents: AgentSummary[]; note?: string }>(`/api/portfolios/${address}/agents`),
+  setAgentName: (portfolio: string, agent: string, body: { name: string; signature: `0x${string}`; timestamp: number }) =>
+    req<{ address: string; displayName: string | null }>(`/api/portfolios/${portfolio}/agents/${agent}/name`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   markets: (minRemaining = 120) => req<{ markets: MarketSummary[] }>(`/api/markets?minRemaining=${minRemaining}`),
 
@@ -296,13 +326,13 @@ export const api = {
       `/api/portfolios/${address}/${kind}?${new URLSearchParams(q).toString()}`,
     ),
 
-  receipt: (intentHash: string) =>
+  receipt: (intentHash: string, portfolio: string) =>
     req<{
       receipt: ReceiptRow;
       order: { kind: number; price: string; quantity: string; orderId: string | null; poolAddress: string } | null;
       copy: { title: string; detail: string; action: string } | null;
       refusalName: string | null;
-    }>(`/api/receipts/${intentHash}`),
+    }>(`/api/receipts/${intentHash}?portfolio=${portfolio}`),
 
   /**
    * Recover a refusal from a failed transaction. Only the hash is sent: the
@@ -317,21 +347,10 @@ export const api = {
       copy: { title: string; detail: string; action: string } | null;
     }>("/api/intents/report", { method: "POST", body: JSON.stringify(body) }),
 
+  historyStatus: (address: string) => req<HistoryStatus>(`/api/portfolios/${address}/history-status`),
+
   reconciliation: (address: string, domains: string[]) =>
     req<{ domains: ReconciliationSummary[]; note?: string }>(
       `/api/portfolios/${address}/reconciliation?domains=${encodeURIComponent(domains.join(","))}`,
     ),
-
-  requestReconcile: (body: {
-    portfolio: string;
-    marketId?: string;
-    orderKey?: string;
-    domain?: string;
-    kind?: "release-order" | "release-settled" | "prune-market" | "sync-portfolio" | "sync-positions";
-    reason?: string;
-  }) =>
-    req<{ queued: boolean; deduplicated: boolean; kind: string }>("/api/reconcile/request", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
 };
