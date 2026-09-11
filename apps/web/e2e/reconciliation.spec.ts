@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockApi, PORTFOLIO, reconciliationPending, reconciliationClear, portfolioSnapshot } from "./mock-api";
+import { mockApi, DOMAIN, PORTFOLIO, reconciliationPending, reconciliationClear, portfolioSnapshot } from "./mock-api";
 
 test.describe("reconciliation-pending state", () => {
   test("pending releases and the over-ceiling explanation are shown, never a bare number", async ({ page }) => {
@@ -60,29 +60,53 @@ test.describe("lifecycle-health warning", () => {
   });
 });
 
-test.describe("recovers after capacity releases", () => {
-  test("Reconcile now queues the job and the panel updates to nothing pending", async ({ page }) => {
-    let served = 0;
+test.describe("reconcile controls", () => {
+  const releasable = {
+    order_key: `0x${"aa".repeat(32)}`,
+    intent_hash: `0x${"bb".repeat(32)}`,
+    agent_address: "0x7273de585311a5139ef83f0f6dbb29f3e57b3389",
+    market_id: `0x${"00".repeat(31)}01`,
+    pool_address: "0xc09e4a5bdee2899962727125fb5eaeb896798e46",
+    market_nonce: 119,
+    domain_hash: DOMAIN,
+    kind: 0,
+    qty_open: "70000000",
+    collateral_reserved: "20650000",
+    state: "NEEDS_RECONCILIATION",
+    releasable: "70000000",
+    source_block: 473_500_000,
+    updated_at: new Date(Date.now() - 600_000).toISOString(),
+  };
+
+  test("Reconcile now is enabled when the contract could release a reservation, and no keeper queue is offered", async ({ page }) => {
     await mockApi(page, [
       {
         match: (u) => u.pathname === `/api/portfolios/${PORTFOLIO}/reconciliation`,
-        respond: (r) => {
-          served += 1;
-          const body = served === 1 ? reconciliationPending : reconciliationClear;
-          return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-        },
+        respond: (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(reconciliationPending) }),
       },
       {
-        match: (u) => u.pathname === "/api/reconcile/request",
-        respond: (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ queued: true, deduplicated: false, kind: "release-order" }) }),
+        match: (u) => u.pathname === `/api/portfolios/${PORTFOLIO}/reservations`,
+        respond: (r) =>
+          r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ reservations: [releasable], total: 1, limit: 100, offset: 0 }) }),
       },
     ]);
     await page.goto(`/app/${PORTFOLIO}`);
 
     await expect(page.getByText(/^\d+ pending releases?$/)).toBeVisible({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Reconcile now" }).click();
+    await expect(page.getByRole("button", { name: "Reconcile now" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /Queue background sweep/ })).toHaveCount(0);
+  });
 
-    await expect(page.getByText(/queued for the next lifecycle pass|already queued/)).toBeVisible({ timeout: 10_000 });
+  test("Reconcile now stays disabled when nothing is releasable", async ({ page }) => {
+    await mockApi(page, [
+      {
+        match: (u) => u.pathname === `/api/portfolios/${PORTFOLIO}/reconciliation`,
+        respond: (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(reconciliationClear) }),
+      },
+    ]);
+    await page.goto(`/app/${PORTFOLIO}`);
+
     await expect(page.getByText("Nothing pending release")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Reconcile now" })).toBeDisabled();
   });
 });

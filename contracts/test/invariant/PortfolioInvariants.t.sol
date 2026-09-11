@@ -125,8 +125,7 @@ contract Handler is Test {
         // the same side when it holds nothing — which is how it would come to
         // hold something.
         if (kind == 1 || kind == 3) {
-            uint256 oid =
-                (uint256(uint160(address(p))) << 72) | (uint256(p.marketNonce()) << 8) | (kind == 1 ? 0 : 1);
+            uint256 oid = (uint256(uint160(address(p))) << 72) | (uint256(p.marketNonce()) << 8) | (kind == 1 ? 0 : 1);
             uint256 held = oc.balanceOf(address(pf), oid);
             if (held == 0) kind = kind == 1 ? 0 : 2;
             else if (qty > held) qty = uint128((held / 1e3) * 1e3);

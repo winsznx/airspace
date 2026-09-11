@@ -82,7 +82,7 @@ test.describe("domain ceiling", () => {
 
     await expect(page.getByText("Shared risk envelope")).toBeVisible();
     // 420 usage / 500 ceiling from the default fixture.
-    await expect(page.getByText(/Risk usage/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Risk usage\s+\d/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("500", { exact: false }).first()).toBeVisible();
   });
 });

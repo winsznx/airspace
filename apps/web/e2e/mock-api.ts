@@ -52,8 +52,6 @@ export const deploymentVerificationFixture = {
 export const configFixture = {
   chainId: 50312,
   factory: "0xeD3D4552AFda96EfC5BF47c533E3302C655CB732",
-  supabaseUrl: "https://example.supabase.co",
-  supabaseAnonKey: "anon-key-not-real",
   explorer: "https://shannon-explorer.somnia.network",
 };
 
@@ -148,6 +146,19 @@ export const agentsFixture = {
       registeredTx: "0x" + "bb".repeat(32),
     },
   ],
+};
+
+/** The portfolio's history is fully read and adds up to the chain: no banner. */
+export const historyCurrent = {
+  stale: false,
+  loading: false,
+  reasons: [],
+  chainHead: "473600000",
+  scannedThrough: "473600000",
+  behindBlocks: "0",
+  onChainReservedCollateral: "0",
+  explainedReservedCollateral: "0",
+  openReservations: 0,
 };
 
 export const reconciliationPending = {
@@ -293,7 +304,7 @@ export async function mockApi(
     if (p.includes("/positions")) return json(route, { positions: [], total: 0, limit: 25, offset: 0 });
     if (p.includes("/receipts") || p.includes("/intents")) return json(route, { intents: [], receipts: [], total: 0, limit: 25, offset: 0 });
     if (p === "/api/intents/simulate" && method === "POST") return json(route, simulateAdmitted());
-    if (p === "/api/reconcile/request" && method === "POST") return json(route, { queued: true, deduplicated: false, kind: "release-order" });
+    if (p.endsWith("/history-status")) return json(route, historyCurrent);
     if (p === "/api/deployment/verify") return json(route, deploymentVerificationFixture);
 
     return json(route, { error: "no fixture for this path", path: p }, 404);

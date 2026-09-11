@@ -61,12 +61,7 @@ contract ReservationNettingTest is Test {
     {
         return ExposureOracle.worstCase(
             ExposureOracle.Market({
-                balYes: balYes,
-                balNo: balNo,
-                buyYes: yesLong,
-                sellYes: yesShort,
-                buyNo: noLong,
-                sellNo: noShort
+                balYes: balYes, balNo: balNo, buyYes: yesLong, sellYes: yesShort, buyNo: noLong, sellNo: noShort
             })
         );
     }
