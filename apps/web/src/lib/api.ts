@@ -300,6 +300,8 @@ export const api = {
 
   agents: (address: string) =>
     req<{ agents: AgentSummary[]; note?: string }>(`/api/portfolios/${address}/agents`),
+  /** The server's clock: what a signed message must carry, whatever the local clock says. */
+  serverTime: () => req<{ now: number }>("/api/time"),
   setAgentName: (portfolio: string, agent: string, body: { name: string; signature: `0x${string}`; timestamp: number }) =>
     req<{ address: string; displayName: string | null }>(`/api/portfolios/${portfolio}/agents/${agent}/name`, {
       method: "PUT",

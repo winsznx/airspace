@@ -119,7 +119,7 @@ export function AgentsPage() {
     const name = form.name.trim();
     if (name) {
       try {
-        const timestamp = Date.now();
+        const { now: timestamp } = await api.serverTime();
         const message = [
           "AIRSPACE",
           "Set agent display name",
@@ -386,7 +386,7 @@ function AgentCard({
     setNameErr(null);
     try {
       const name = nameInput.trim();
-      const timestamp = Date.now();
+      const { now: timestamp } = await api.serverTime();
       const message = [
         "AIRSPACE",
         "Set agent display name",

@@ -294,6 +294,7 @@ export async function mockApi(
       if (o.match(url)) return o.respond(route);
     }
 
+    if (p === "/api/time") return json(route, { now: Date.now() });
     if (p === "/api/config") return json(route, configFixture);
     if (p === "/api/health") return json(route, { ok: true, chainId: 50312, factory: configFixture.factory, rpc: "ok", blockNumber: "473600000" });
     if (p === "/api/markets") return json(route, marketsFixture);

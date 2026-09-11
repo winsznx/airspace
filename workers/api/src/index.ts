@@ -86,6 +86,20 @@ const S = (v: unknown): unknown =>
 // Health and configuration
 // ---------------------------------------------------------------------------
 
+/**
+ * The server's clock, for anything the browser signs with a timestamp in it.
+ *
+ * A signed message is only valid within a few minutes of the server's own time,
+ * which stops an old signature being replayed. Taking the time from the browser's
+ * clock made that check depend on the user having set their computer correctly:
+ * one that was a few days off could never rename an agent. The browser signs this
+ * value instead, so the check no longer cares what the local clock says.
+ */
+app.get("/api/time", (c) => {
+  c.header("cache-control", "no-store");
+  return c.json({ now: Date.now() });
+});
+
 app.get("/api/health", async (c) => {
   const out: Record<string, unknown> = {
     ok: true,

@@ -218,6 +218,7 @@ export function ControlRoom() {
         agents={(agents.data?.agents ?? []).map((a) => ({ address: a.address, name: a.displayName, enabled: a.enabled }))}
         markets={markets.data?.markets ?? []}
         marketsLoading={markets.isLoading}
+        configuredDomains={configured.map((d) => d.domain)}
         onExecuted={() => {
           void portfolio.refetch();
           void reservations.refetch();
@@ -431,12 +432,14 @@ function AdmissionPreview({
   agents,
   markets,
   marketsLoading,
+  configuredDomains,
   onExecuted,
 }: {
   portfolio: string;
   agents: Array<{ address: string; name: string | null; enabled: boolean }>;
   markets: MarketSummary[];
   marketsLoading: boolean;
+  configuredDomains: string[];
   onExecuted: () => void;
 }) {
   const [agent, setAgent] = useState("");
@@ -453,14 +456,20 @@ function AdmissionPreview({
   const wrongNetwork = useIsWrongNetwork();
   const executeTx = useWrite();
 
-  const market = markets.find((m) => m.marketId === marketId);
   // If the connected wallet is itself a known agent, default to it — someone
   // who switched MetaMask accounts to their agent's key should not have to
   // also re-paste that same address here before they can place an order.
   // A manual pick (`agent`) always wins once the user has made one.
   const walletIsAgent = Boolean(wallet) && agents.some((a) => a.address.toLowerCase() === wallet!.toLowerCase());
   const selectedAgent = agent || (walletIsAgent ? wallet! : agents[0]?.address) || "";
-  const selectedMarket = marketId || markets[0]?.marketId || "";
+  // Default to a market whose domain has a ceiling. An order into a domain with
+  // none is refused (DOMAIN_NOT_CONFIGURED), so opening on one is a trap.
+  const hasCeiling = (m: MarketSummary) => Boolean(m.domain) && configuredDomains.includes(m.domain as string);
+  const selectedMarket = marketId || (markets.find(hasCeiling) ?? markets[0])?.marketId || "";
+  // The market the dropdown is SHOWING, not only one the user has changed it to.
+  // Until they touch the select, `marketId` is empty and the first option is
+  // displayed; deriving this from `marketId` made "Place order" do nothing.
+  const market = markets.find((m) => m.marketId === selectedMarket);
 
   const valid = /^0x[0-9a-fA-F]{40}$/.test(selectedAgent) && /^0x[0-9a-fA-F]{64}$/.test(selectedMarket);
 
@@ -581,6 +590,7 @@ function AdmissionPreview({
                     markets.map((m) => (
                       <option key={m.marketId} value={m.marketId}>
                         {m.cadenceLabel} · market {marketLabel(m.marketId)} · {countdown(m.live.secondsRemaining)} left
+                        {hasCeiling(m) ? "" : " · no ceiling"}
                       </option>
                     ))
                   )}
