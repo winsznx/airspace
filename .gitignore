@@ -75,3 +75,6 @@ contracts/.env*
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
+
+# Raw log exports from the Supabase dashboard: operational, never source.
+supabase_logs.json

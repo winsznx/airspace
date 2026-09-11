@@ -30,9 +30,10 @@
     "bundle:budget": "node scripts/bundle-budget.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
+    "@supabase/supabase-js": "^2.47.10",
     "@types/node": "^22.10.2",
-    "@supabase/supabase-js": "^2.47.10"
+    "typescript": "^5.7.2",
+    "viem": "^2.56.0",
+    "vitest": "^2.1.8"
   }
 }

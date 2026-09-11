@@ -17,6 +17,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      viem:
+        specifier: ^2.56.0
+        version: 2.56.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(supports-color@10.2.2)
@@ -148,9 +151,6 @@ importers:
 
   workers/api:
     dependencies:
-      '@airspace/db':
-        specifier: workspace:*
-        version: link:../../packages/db
       '@airspace/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -4984,7 +4984,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -7031,7 +7031,7 @@ snapshots:
   ox@0.6.7(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
@@ -7045,7 +7045,7 @@ snapshots:
   ox@0.6.9(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
